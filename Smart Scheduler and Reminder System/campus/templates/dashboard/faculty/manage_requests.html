@@ -1,0 +1,48 @@
+{% extends 'dashboard/faculty/base.html' %}
+{% block title %}Manage Meeting Requests{% endblock %}
+
+{% block content %}
+<main id="main" class="main">
+    <section class="section dashboard">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Pending Meeting Requests</h5>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Student</th>
+                                    <th scope="col">Start Time</th>
+                                    <th scope="col">End Time</th>
+                                    <th scope="col">Topic</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for request in requests %}
+                                <tr>
+                                    <td>{{ request.student.user.first_name }} {{ request.student.user.last_name }}</td>
+                                    <td>{{ request.start_time|date:"Y-m-d H:i" }}</td>
+                                    <td>{{ request.end_time|date:"Y-m-d H:i" }}</td>
+                                    <td>{{ request.title }}</td>
+                                    <td>
+                                        <a href="{% url 'approve_meeting_request' request.id %}" class="btn btn-success btn-sm">Approve</a>
+                                        <a href="{% url 'edit_meeting_request' request.id %}" class="btn btn-warning btn-sm">Modify</a>
+                                        <a href="{% url 'reject_meeting_request' request.id %}" class="btn btn-danger btn-sm">Reject</a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center">No pending requests.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}
