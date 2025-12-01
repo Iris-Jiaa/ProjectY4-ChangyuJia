@@ -1,0 +1,221 @@
+{% extends 'dashboard/students/base.html' %}
+{% block title %}Lecturer Calendar{% endblock %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<main id="main" class="main">
+    <section class="section dashboard">
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Calendar for {{ lecturer.staff.first_name }} {{ lecturer.staff.last_name }}</h5>
+                        <div id="calendar"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Find Available Slots</h5>
+                        <form id="findSlotsForm">
+                            <div class="mb-3">
+                                <label for="start_date" class="form-label">Start Date</label>
+                                <input type="datetime-local" class="form-control" id="start_date" name="start_date" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="end_date" class="form-label">End Date</label>
+                                <input type="datetime-local" class="form-control" id="end_date" name="end_date" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="duration" class="form-label">Duration (minutes)</label>
+                                <input type="number" class="form-control" id="duration" name="duration" value="30" required>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Find Slots</button>
+                            </div>
+                        </form>
+                        <hr>
+                        <h5 class="card-title">Available Slots</h5>
+                        <div id="availableSlots" class="list-group">
+                            <!-- Available slots will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Meeting Request Modal -->
+<div class="modal fade" id="meetingRequestModal" tabindex="-1" aria-labelledby="meetingRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="meetingRequestModalLabel">Request a Meeting</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="meetingRequestForm" method="post" action="{% url 'request_meeting' lecturer.id %}">
+                    {% csrf_token %}
+                    {{ meeting_form|crispy }}
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Send Request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    var lectureEvents = {{ events|safe }};
+
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        events: lectureEvents,
+        dateClick: function(info) {
+            var meetingModal = new bootstrap.Modal(document.getElementById('meetingRequestModal'), {});
+            
+            // Check if the clicked time is inside an existing event
+            var events = calendar.getEvents();
+            var clickedTime = info.date.getTime();
+            var isOverlapping = events.some(function(event) {
+                var eventStart = event.start.getTime();
+                var eventEnd = event.end.getTime();
+                return (clickedTime >= eventStart && clickedTime < eventEnd);
+            });
+
+            if (isOverlapping) {
+                alert('This time slot is already booked. Please choose another time.');
+                return;
+            }
+
+            // Pre-fill the form
+            var startInput = document.getElementById('id_start_time');
+            var endInput = document.getElementById('id_end_time');
+
+            // Format date and time
+            var startDate = info.date;
+            var endDate = new Date(startDate.getTime() + 30 * 60000); // Add 30 minutes
+
+            var formattedStartDate = startDate.getFullYear() + '-' + 
+                                     ('0' + (startDate.getMonth() + 1)).slice(-2) + '-' + 
+                                     ('0' + startDate.getDate()).slice(-2) + 'T' + 
+                                     ('0' + startDate.getHours()).slice(-2) + ':' + 
+                                     ('0' + startDate.getMinutes()).slice(-2);
+
+            var formattedEndDate = endDate.getFullYear() + '-' + 
+                                   ('0' + (endDate.getMonth() + 1)).slice(-2) + '-' + 
+                                   ('0' + endDate.getDate()).slice(-2) + 'T' + 
+                                   ('0' + endDate.getHours()).slice(-2) + ':' + 
+                                   ('0' + endDate.getMinutes()).slice(-2);
+
+            startInput.value = formattedStartDate;
+            endInput.value = formattedEndDate;
+
+            meetingModal.show();
+        }
+    });
+    calendar.render();
+
+    // Handle find slots form submission
+    var findSlotsForm = document.getElementById('findSlotsForm');
+    findSlotsForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var startDate = document.getElementById('start_date').value;
+        var endDate = document.getElementById('end_date').value;
+        var duration = document.getElementById('duration').value;
+        var url = `{% url 'find_available_slots' lecturer.id %}?start_date=${startDate}&end_date=${endDate}&duration=${duration}`;
+
+        fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            var slotsContainer = document.getElementById('availableSlots');
+            slotsContainer.innerHTML = ''; // Clear previous slots
+            if (data.status === 'success' && data.available_slots.length > 0) {
+                data.available_slots.forEach(slot => {
+                    var slotElement = document.createElement('a');
+                    slotElement.href = '#';
+                    slotElement.classList.add('list-group-item', 'list-group-item-action');
+                    
+                    var start = new Date(slot.start);
+                    var end = new Date(slot.end);
+                    
+                    slotElement.textContent = `${start.toLocaleString()} - ${end.toLocaleString()}`;
+                    slotElement.dataset.startTime = slot.start;
+                    slotElement.dataset.endTime = slot.end;
+                    
+                    slotElement.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        var meetingModal = new bootstrap.Modal(document.getElementById('meetingRequestModal'), {});
+                        
+                        // Pre-fill the form
+                        var startInput = document.getElementById('id_start_time');
+                        var endInput = document.getElementById('id_end_time');
+
+                        startInput.value = this.dataset.startTime.slice(0, 16);
+                        endInput.value = this.dataset.endTime.slice(0, 16);
+
+                        meetingModal.show();
+                    });
+                    
+                    slotsContainer.appendChild(slotElement);
+                });
+            } else {
+                slotsContainer.innerHTML = '<div class="alert alert-info">No available slots found for the selected criteria.</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            var slotsContainer = document.getElementById('availableSlots');
+            slotsContainer.innerHTML = '<div class="alert alert-danger">An error occurred while finding available slots.</div>';
+        });
+    });
+
+    // Handle meeting request form submission
+    var meetingForm = document.getElementById('meetingRequestForm');
+    meetingForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var formData = new FormData(meetingForm);
+        var url = meetingForm.getAttribute('action');
+
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(data.message);
+                var meetingModal = bootstrap.Modal.getInstance(document.getElementById('meetingRequestModal'));
+                meetingModal.hide();
+                calendar.refetchEvents(); // Refetch events to show the new meeting
+            } else {
+                // Display errors
+                var errorSummary = "Please correct the following errors:\n";
+                for (var field in data.errors) {
+                    errorSummary += field + ": " + data.errors[field].join(", ") + "\n";
+                }
+                alert(errorSummary);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while submitting the request.');
+        });
+    });
+});
+</script>
+{% endblock %}

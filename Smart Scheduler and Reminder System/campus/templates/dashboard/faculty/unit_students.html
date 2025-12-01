@@ -1,0 +1,56 @@
+{% extends 'dashboard/faculty/base.html' %}
+{% block title %}Students for {{ unit.course_name }}{% endblock %}
+
+{% block content %}
+<main id="main" class="main">
+    <section class="section">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Students Registered for {{ unit.course_name }} ({{ unit.students_course }})</h5>
+
+                        {% if students %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped">
+                                <thead>
+                                    <tr class="table-active">
+                                        <th>#</th>
+                                        <th>Profile Pic</th>
+                                        <th>First Name</th>
+                                        <th>Last Name</th>
+                                        <th>Email</th>
+                                        <th>Year</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for reg_unit in students %}
+                                    <tr>
+                                        <td>{{ forloop.counter }}</td>
+                                        <td>
+                                            <a href="{% url 'view_student_calendar' reg_unit.student.id %}">
+                                                <img src="{{ reg_unit.student.student_name.profile_pic.url }}" class="rounded-circle" height="40px" width="40px" alt="student-dp">
+                                            </a>
+                                        </td>
+                                        <td>{{ reg_unit.student.student_name.first_name }}</td>
+                                        <td>{{ reg_unit.student.student_name.last_name }}</td>
+                                        <td>{{ reg_unit.student.student_name.email }}</td>
+                                        <td>{{ reg_unit.student.year }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info" role="alert">
+                            No students are registered for this unit yet.
+                        </div>
+                        {% endif %}
+                        <a href="{% url 'lectures_records' request.user.faculty.id request.user.faculty %}" class="btn btn-secondary mt-3">Back to Lecture Records</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,96 @@
+.notification-popup {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 300px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: none;
+    z-index: 1000;
+}
+
+.notification-popup h5 {
+    margin: 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+}
+
+.notification-popup-item {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.notification-popup-item a {
+    text-decoration: none;
+    color: #333;
+}
+
+#close-popup {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+
+/* Toast Notification Styles */
+#toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1056; /* Higher than header */
+}
+
+.toast-notification {
+    background-color: #fff;
+    color: #333;
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 350px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.toast-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-notification .toast-message {
+    flex-grow: 1;
+}
+
+.toast-notification .toast-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #999;
+    cursor: pointer;
+    margin-left: 15px;
+}
+
+/* Recommendation Box Styles */
+.recommendation-box-content {
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+/* Increase font size for recommendation box text */
+.recommendation-box-content p {
+    font-size: 1rem; /* Adjust as needed */
+}
+
+/* Increase font size for Scheduled lectures card text */
+.scheduled-lectures-card .activity p {
+    font-size: 1rem; /* Adjust as needed */
+}
