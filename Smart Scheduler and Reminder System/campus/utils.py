@@ -1,61 +1,111 @@
-from .models import Lecture, Notification
-from datetime import datetime as dt, timedelta
-from django.http import HttpResponse
+from datetime import datetime, timedelta
+
 from django.db.models import Q
 
+from campus.models import Lecture, RegisteredUnit, StudentPersonalEvent
 
-def schedule_recurring_lectures():
-    """ This is a function that automatically schedules recurring lectures, i.e daily or weekly lectures. """
+class EventItem:
+    """ A standardized representation for various types of events to facilitate conflict detection. """
+    def __init__(self, obj_id, title, start_datetime, end_datetime, location=None, event_type='unknown'):
+        self.obj_id = obj_id
+        self.title = title
+        self.start_datetime = start_datetime
+        self.end_datetime = end_datetime
+        self.location = location  # String representation of location (e.g., hall_no)
+        self.event_type = event_type # 'lecture' or 'personal_event'
 
-    recurring_classes = Lecture.objects.filter(Q(recurrence_pattern='daily') | Q(recurrence_pattern='weekly'))  # get recurring lectures
-    current_day = dt.now().strftime('%A %b. %d, %Y')
+    def __str__(self):
+        return (f"{self.title} (ID: {self.obj_id}) from {self.start_datetime} to {self.end_datetime}"
+                f"{' at ' + self.location if self.location else ''} [{self.event_type}]")
 
-    for _lecture in recurring_classes:
-        # Check if today is the day for the recurring class
-        if (current_day == _lecture.lecture_date.strftime('%A %b. %d, %Y')):
-            # Code to notify participants (i.e. students)
-            notification = Notification.objects.get_or_create(
-                message=f'Lecture for unit {_lecture.unit_name} scheduled for today at {_lecture.start_time.strftime("%H:%M")}.',
-                scheduled_lecture_id=_lecture.id,
-            )
+def check_student_conflicts(student):
+    """
+    Detects time and location conflicts for a given student's scheduled lectures and personal events.
 
-            # Code to adjust date and time for the next lectures
-            if _lecture.recurrence_pattern == 'daily':
-                # in daily lectures, we have to add 1 day to the current lecture date. For example,
-                # if lecture_date is 2023-11-15 where 15 is the day, add 1 to 15 -> 15 + 1 = 16. Therefore,
-                # the next scheduled class will be on date 2023-11-16
-                # the timestamp, i.e. start_time & end_time, remains the same.
-                new_lec = Lecture.objects.update_or_create(
-                    lecturer=_lecture.lecturer,
-                    student=_lecture.student,
-                    unit_name=_lecture.unit_name,
-                    lecture_date=_lecture.lecture_date + timedelta(days=1),     # increment 1 day
-                    start_time=_lecture.start_time,
-                    end_time=_lecture.end_time,
-                    recurrence_pattern=_lecture.recurrence_pattern,
-                )
-            
-            elif _lecture.recurrence_pattern == 'weekly':
-                # in weekly lectures, we have to add 7 days to the current lecture date. For example,
-                # if lecture_date is 2023-11-15 where 15 is the day, add 7 to 15 -> 15 + 7 = 22. Therefore,
-                # the next scheduled class will be on date 2023-11-22
-                # the timestamp, i.e. start_time & end_time, remains the same.
-                new_lec = Lecture.objects.update_or_create(
-                    lecturer=_lecture.lecturer,
-                    student=_lecture.student,
-                    unit_name=_lecture.unit_name,
-                    lecture_date=_lecture.lecture_date + timedelta(days=7),    # add 7 days ahead of the lecture date
-                    start_time=_lecture.start_time,
-                    end_time=_lecture.end_time,
-                    recurrence_pattern=_lecture.recurrence_pattern,
-                )
+    Args:
+        student (Student): The student instance for whom to check conflicts.
 
-def user_logs(request):
-    user_ip = request.META.get('REMOTE_ADDR')
-    visited_url = request.build_absolute_uri()
-    timestamp = dt.now().strftime("%a %d-%m-%Y %H:%M:%S")
-    log_entry = f"Visited URL: {visited_url} --> IP Address: {user_ip} - Timestamp: {timestamp}\n"
+    Returns:
+        list: A list of dictionaries, where each dictionary describes a conflict.
+              Example:
+              [
+                  {
+                      'type': 'time_conflict',
+                      'description': 'Event A and Event B overlap in time.',
+                      'events': [EventItem_A, EventItem_B]
+                  },
+                  {
+                      'type': 'location_conflict',
+                      'description': 'Event C and Event D require different locations at the same time.',
+                      'events': [EventItem_C, EventItem_D]
+                  }
+              ]
+    """
+    all_events = []
 
-    with open("log.txt", "a") as log_file:
-        log_file.write(log_entry)
-    return HttpResponse("Hello, thanks for visiting the website!")
+    # 1. Fetch and normalize Lectures
+    # Get all registered units for the student
+    registered_units = RegisteredUnit.objects.filter(student=student)
+    # Find all lectures associated with these registered units
+    lectures_qs = Lecture.objects.filter(
+        unit_name__in=registered_units.values('unit')
+    ).select_related('lecturer__staff', 'unit_name__course', 'lecture_hall')
+
+    for lecture in lectures_qs:
+        # Combine date and time fields into datetime objects
+        start_datetime = datetime.combine(lecture.lecture_date, lecture.start_time)
+        end_datetime = datetime.combine(lecture.lecture_date, lecture.end_time)
+        location = lecture.lecture_hall.hall_no if lecture.lecture_hall else None
+        all_events.append(EventItem(
+            obj_id=lecture.id,
+            title=f"{lecture.unit_name.course.name} ({lecture.lecturer.staff.first_name} {lecture.lecturer.staff.last_name})",
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            location=location,
+            event_type='lecture'
+        ))
+
+    # 2. Fetch and normalize StudentPersonalEvents
+    personal_events_qs = StudentPersonalEvent.objects.filter(student=student)
+    for personal_event in personal_events_qs:
+        all_events.append(EventItem(
+            obj_id=personal_event.id,
+            title=personal_event.title,
+            start_datetime=personal_event.start_date,
+            end_datetime=personal_event.end_date,
+            location=None, # Personal events don't have a fixed lecture hall
+            event_type='personal_event'
+        ))
+
+    # 3. Sort events by start time
+    all_events.sort(key=lambda x: x.start_datetime)
+
+    conflicts = []
+
+    # 4. Detect conflicts
+    # Compare each event with every other event
+    for i in range(len(all_events)):
+        for j in range(i + 1, len(all_events)):
+            event1 = all_events[i]
+            event2 = all_events[j]
+
+            # Check for time overlap
+            if event1.start_datetime < event2.end_datetime and event2.start_datetime < event1.end_datetime:
+                # Time conflict detected
+                conflict = {
+                    'type': 'time_overlap',
+                    'description': f"Time overlap detected between '{event1.title}' and '{event2.title}'.",
+                    'events': [event1, event2]
+                }
+                conflicts.append(conflict)
+
+                # Check for location conflict if both events have a defined location and are different
+                if event1.location and event2.location and event1.location != event2.location:
+                    location_conflict = {
+                        'type': 'location_conflict',
+                        'description': f"Location conflict: '{event1.title}' at '{event1.location}' and '{event2.title}' at '{event2.location}' at the same time.",
+                        'events': [event1, event2]
+                    }
+                    conflicts.append(location_conflict)
+    
+    return conflicts

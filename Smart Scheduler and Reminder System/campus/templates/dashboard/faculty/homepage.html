@@ -8,6 +8,23 @@
 				<div class="col-lg-7">
 					<div class="row">
 						<div class="col-md-12 col-lg-12">
+							<div class="card info-card schedule-lecture-card">
+								<div class="card-body">
+									<h5 class="card-title">Schedule a Lecture</h5>
+									<div class="d-flex align-items-center">
+										<div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+											<i class="bi-calendar-event"></i>
+										</div>
+										<div class="ps-3">
+											<a href="{% url 'schedule_lecture_list' staff_id=request.user.faculty.id staff_name=request.user.faculty %}">
+												<h6>Click here to schedule your lectures</h6>
+											</a>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="col-md-12 col-lg-12">
 							<div class="card info-card units-card">
 								<div class="card-body">
 									<h5 class="card-title">Assigned units <span>| This Semester</span></h5>
@@ -61,7 +78,7 @@
 											<tr>
 												<td>{{ forloop.counter }}</td>
 												<td>{{ lecture.lecturer.staff.first_name|title }}</td>
-												<td>{{ lecture.unit_name }}</td>
+												<td>{{ lecture.unit_name.course.name }}</td>
 												<td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
 												<td>{{ lecture.start_time|date:"H:i" }} - {{ lecture.end_time|date:"H:i" }}HRS</td>
 												<td class="text-end">
@@ -93,10 +110,10 @@
 												{{ time_since }} ago
 											</div>
 											{% endwith %}
-											<img src="{{ lecture.lecturer.staff.profile_pic.url }}" class="rounded-circle activity-badge align-self-start" height="30px" width="30px" alt="user-dp">
+
 											<div class="activity-content">
 												<p class="small fst-italic">
-													You scheduled <b>{{ lecture.unit_name }}</b> is scheduled for date <b>{{ lecture.lecture_date|date:"D d-M-Y" }}</b> to start at <b>{{ lecture.start_time|date:"h:iA" }}</b>
+													You scheduled <b>{{ lecture.unit_name.course.name }}</b> is scheduled for date <b>{{ lecture.lecture_date|date:"D d-M-Y" }}</b> to start at <b>{{ lecture.start_time|date:"h:iA" }}</b>
 												</p>
 											</div>
 										</div>

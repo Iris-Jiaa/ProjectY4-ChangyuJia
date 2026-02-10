@@ -1,0 +1,55 @@
+{% extends 'dashboard/faculty/base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% load custom_filters %}
+	{% load static %}
+{% block content %}
+<main id="main" class="main">
+    <section class="section dashboard">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card recent-sales overflow-auto">
+                    <div class="card-body">
+                        <h5 class="card-title">All Scheduled Lectures <span>| Today</span></h5>
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr class="table-active">
+                                    <th>#</th>
+                                    <th class="text-center">Lecturer</th>
+                                    <th class="text-center">Unit</th>
+                                    <th class="text-center">Date</th>
+                                    <th class="text-center">Time</th>
+                                    <th class="text-center">Venue</th>
+                                    <th class="text-center">Students Attending</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lecture in scheduled_lectures %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ lecture.lecturer.staff.first_name|title }} {{ lecture.lecturer.staff.last_name|title }}</td>
+                                    <td>{{ lecture.unit_name.course.name }}</td>
+                                    <td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
+                                    <td>{{ lecture.start_time|date:"H:i" }} - {{ lecture.end_time|date:"H:i" }}HRS</td>
+                                    <td class="text-center">
+                                        {% if lecture.lecture_hall %}
+                                            <span class="badge bg-success">{{ lecture.lecture_hall|default:"--" }}</span>
+                                        {% else %}
+                                            <span class="badge bg-primary py-2">Allocation pending</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ lecture.total_students }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center">No lectures scheduled for today.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}

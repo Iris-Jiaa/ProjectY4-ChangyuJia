@@ -12,6 +12,30 @@ from django.contrib.contenttypes.models import ContentType
 from datetime import time, datetime as dt, timedelta
 import json
 from django.utils import timezone # Added for IntegrityError fix
+from .utils import check_student_conflicts # Import the conflict detection utility
+
+
+@method_decorator(login_required(login_url='login'), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+class AdminDashboardView(View):
+    template_name = 'dashboard/admin/homepage.html'
+
+    def get(self, request, *args, **kwargs):
+        current_date = dt.now().strftime("%Y-%m-%d")
+
+        scheduled_lectures_QS = Lecture.objects.filter(
+            lecture_date=current_date,
+        ).select_related(
+            'lecturer__staff',
+            'unit_name__course',
+            'lecture_hall'
+        ).order_by('lecture_date', 'start_time', 'unit_name__course__name')
+
+        context = {
+            'scheduled_lectures': scheduled_lectures_QS,
+        }
+        return render(request, self.template_name, context)
+
 
 # students views
 @method_decorator(login_required(login_url='login'), name='get')
@@ -32,12 +56,13 @@ class StudentHomepageView(View):
         ).count()
         
         scheduled_lectures_QS = Lecture.objects.filter(
-            lecturer__department=request.user.student.department,
-            unit_name__students_course=request.user.student.course,
-            unit_name__year_of_study=request.user.student.year,
-            unit_name__semester=request.user.student.semester,
-            lecture_date__lte=current_date,
-        ).order_by('-lecture_date', 'start_time', 'unit_name')
+            unit_name__registeredunit__student=request.user.student, # Filter by units registered by the student
+            lecture_date__gte=current_date, # Show upcoming lectures
+        ).select_related(
+            'lecturer__staff',
+            'unit_name__course',
+            'lecture_hall'
+        ).order_by('lecture_date', 'start_time', 'unit_name__course__name')
 
         # Debug print statements
         print("--- Debugging scheduled_lectures_QS ---")
@@ -62,7 +87,7 @@ class StudentHomepageView(View):
         event_data = []
         for event in events:
             event_data.append({
-                'title': str(event.unit_name),
+                'title': str(event.unit_name.course.name),
                 'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                 'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
                 'backgroundColor': '#f56954', # red
@@ -82,13 +107,17 @@ class StudentHomepageView(View):
         
         modified_requests = MeetingRequest.objects.filter(student=request.user.student, status='modified')
 
+        # Detect conflicts
+        conflicts = check_student_conflicts(request.user.student)
+
         context = {
             'TotalUnits': total_units,
             'TotalLectures': total_lectures,
             'scheduled_lectures': scheduled_lectures_QS,
             'events': json.dumps(event_data),
             'personal_event_form': StudentPersonalEventForm(),
-            'modified_requests': modified_requests
+            'modified_requests': modified_requests,
+            'conflicts': conflicts,
         }
         return render(request, self.template_name, context)
 
@@ -107,7 +136,7 @@ class LecturerCalendarView(View):
             event_data = []
             for event in lectures:
                 event_data.append({
-                    'title': str(event.unit_name),
+                    'title': str(event.unit_name.course.name),
                     'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                     'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
                     'backgroundColor': '#f56954', # red
@@ -155,7 +184,7 @@ def get_personal_events(request):
 @login_required(login_url='login')
 def add_personal_event(request):
     if request.method == 'POST' and request.user.is_student:
-        form = StudentPersonalEventForm(request.POST)
+        form = StudentPersonalEventForm(request.POST, student_instance=request.user.student)
         if form.is_valid():
             event = form.save(commit=False)
             event.student = request.user.student
@@ -170,7 +199,7 @@ def update_personal_event(request, event_id):
     if request.method == 'POST' and request.user.is_student:
         try:
             event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
-            form = StudentPersonalEventForm(request.POST, instance=event)
+            form = StudentPersonalEventForm(request.POST, instance=event, student_instance=request.user.student)
             if form.is_valid():
                 form.save()
                 return JsonResponse({'status': 'success'})
@@ -272,7 +301,7 @@ class LectureAttendanceConfirmationView(View):
             unit_name__semester=request.user.student.semester,
             lecture_date=current_date,
             student=None,
-        ).order_by('-lecture_date', 'start_time', 'unit_name')
+        ).order_by('-lecture_date', 'start_time', 'unit_name__course__name')
 
 
         context = {
@@ -326,9 +355,12 @@ class StudentsLecturesDetailView(View):
     template_name = 'dashboard/students/lectures.html'
     def get(self, request, _student, *args, **kwargs):
         lectures_QS = Lecture.objects.filter(
-            lecturer__department=request.user.student.department, unit_name__students_course=request.user.student.course,
-            is_taught=True,
-        ).order_by('-lecture_date', '-start_time', 'unit_name')
+            unit_name__registeredunit__student=request.user.student, # Filter by units registered by the student
+        ).select_related(
+            'lecturer__staff',
+            'unit_name__course',
+            'lecture_hall'
+        ).order_by('lecture_date', 'start_time', 'unit_name__course__name')
 
         context = {'scheduled_lectures': lectures_QS}
         return render(request, self.template_name, context)
@@ -394,7 +426,7 @@ class FacultyDashboardView(View):
         event_data = []
         for event in all_lectures:
             event_data.append({
-                'title': str(event.unit_name),
+                'title': str(event.unit_name.course.name),
                 'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                 'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
                 'backgroundColor': '#f56954', # red
@@ -488,8 +520,7 @@ class ManageMeetingRequestsView(View):
         return render(request, self.template_name, context)
 
 
-@method_decorator(login_required(login_url='login'), name='dispatch')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='dispatch')
+@method_decorator(user_passes_test(lambda user: hasattr(user, 'faculty')), name='dispatch')
 class ScheduleLectureView(View):
     template_name = 'dashboard/faculty/schedule-lecture.html'
     form_class = ScheduleLectureForm
@@ -523,6 +554,13 @@ class ScheduleLectureView(View):
             new_scheduled_lecture.date_scheduled = timezone.now() # Explicitly set date_scheduled
             new_scheduled_lecture.save()
 
+            # Create a notification for the lecturer
+            Notification.objects.create(
+                recipient=request.user,
+                message=f"You have successfully scheduled a lecture for {new_scheduled_lecture.unit_name} on {new_scheduled_lecture.lecture_date} at {new_scheduled_lecture.start_time}.",
+                content_object=new_scheduled_lecture
+            )
+
             messages.success(request, 'Lecture successfully scheduled!')
             return redirect('faculty_homepage')
         else:
@@ -543,12 +581,12 @@ class ScheduleLectureView(View):
             return render(request, self.template_name, context)
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: hasattr(user, 'faculty')), name='get')
 class AssignUnitsforLecturersView(View):
     form_class = LecturerUnitsBookingForm
     template_name = 'dashboard/faculty/book-units.html'
 
-    def get(self, request, staff_id, *args, **kwargs):
+    def get(self, request, *args, **kwargs):
         booked_units_QS = BookedUnit.objects.filter(lecturer__department=request.user.faculty.department)
         form = self.form_class()
 
@@ -558,18 +596,48 @@ class AssignUnitsforLecturersView(View):
         }
         return render(request, self.template_name, context)
     
-    def post(self, request, staff_id, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
         form = self.form_class(request.POST)
 
         if form.is_valid():
-            booked_unit_instance = form.save(commit=False)
-            booked_unit_instance.booking_date = timezone.now() # Explicitly set booking_date
-            booked_unit_instance.save()
-            
-            messages.info(request, 'Unit assigned to lecturer successfully!')
-            return redirect('assign_units', staff_id)
+            lecturer = form.cleaned_data['lecturer']
+            courses = form.cleaned_data['courses'] # This will be a queryset of Course objects
+            students_course = form.cleaned_data['students_course']
+            year_of_study = form.cleaned_data['year_of_study']
+            semester = form.cleaned_data['semester']
 
-        context = {'LecturersUnitsBookingForm': form}
+            for course in courses:
+                # Check if a similar BookedUnit already exists to prevent duplicates
+                existing_booked_unit = BookedUnit.objects.filter(
+                    lecturer=lecturer,
+                    course=course,
+                    students_course=students_course,
+                    year_of_study=year_of_study,
+                    semester=semester
+                ).first()
+
+                if existing_booked_unit:
+                    messages.warning(request, f'Course "{course.name}" for {students_course} {year_of_study} {semester} is already assigned to {lecturer}.')
+                else:
+                    BookedUnit.objects.create(
+                        lecturer=lecturer,
+                        course=course,
+                        students_course=students_course,
+                        year_of_study=year_of_study,
+                        semester=semester,
+                        booking_date=timezone.now()
+                    )
+                    messages.success(request, f'Course "{course.name}" assigned to {lecturer} successfully!')
+            
+            # Redirect to the same page to allow further assignments or view updated list
+            return redirect('assign_units') # Removed staff_id from redirect
+        
+        # If form is not valid, re-render the page with errors
+        booked_units_QS = BookedUnit.objects.filter(lecturer__department=request.user.faculty.department)
+        context = {
+            'LecturersUnitsBookingForm': form,
+            'booked_units': booked_units_QS
+        }
         return render(request, self.template_name, context)
 
 @method_decorator(login_required(login_url='login'), name='get')
@@ -578,7 +646,7 @@ class LecturesDetailView(View):
     template_name = 'dashboard/faculty/lectures.html'
 
     def get(self, request, staff_name, staff_id, *args, **kwargs):
-        scheduled_lectures_QS = Lecture.objects.filter(lecturer=request.user.faculty, is_taught=True).order_by('unit_name')
+        scheduled_lectures_QS = Lecture.objects.filter(lecturer=request.user.faculty).order_by('unit_name')
 
         context = {
             'scheduled_lectures': scheduled_lectures_QS,
@@ -644,7 +712,7 @@ class StudentCalendarView(View):
             )
             for event in student_lectures:
                 event_data.append({
-                    'title': str(event.unit_name),
+                    'title': str(event.unit_name.course.name),
                     'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                     'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
                     'backgroundColor': '#f56954', # red
@@ -903,7 +971,7 @@ def get_unread_notifications(request):
             if isinstance(n.content_object, Lecture):
                 item['is_event_reminder'] = True
                 item['event_start_time'] = n.content_object.start_time.strftime('%H:%M')
-                item['event_title'] = str(n.content_object.unit_name)
+                item['event_title'] = str(n.content_object.unit_name.course.name)
             elif isinstance(n.content_object, MeetingRequest):
                 item['is_event_reminder'] = True
                 item['event_start_time'] = n.content_object.start_time.strftime('%H:%M')

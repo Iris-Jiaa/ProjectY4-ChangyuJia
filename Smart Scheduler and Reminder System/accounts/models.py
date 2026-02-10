@@ -23,7 +23,7 @@ class User(AbstractUser):
     dob = models.DateField(null=True, blank=False, db_column='Date of Birth')
     age = models.PositiveIntegerField(default=0, editable=False)
     mobile_no = PhoneNumberField()
-    profile_pic = models.ImageField(upload_to='Users/imgs/dps/', default='default.png')
+
     is_student = models.BooleanField(default=False)
     date_updated = models.DateTimeField(auto_now=True)
     

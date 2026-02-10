@@ -4,6 +4,26 @@
 	{% block content %}
 	<main id="main" class="main">
 		<section class="section dashboard">
+            {% if conflicts %}
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <h4 class="alert-heading">Potential Schedule Conflicts Detected!</h4>
+                <p>We've found the following potential issues in your schedule:</p>
+                <ul>
+                {% for conflict in conflicts %}
+                    <li>
+                        <strong>{{ conflict.type|replace:"_| "|title }}:</strong> {{ conflict.description }}
+                        <ul>
+                            {% for event in conflict.events %}
+                                <li>{{ event.title }} ({{ event.event_type|replace:"_| "|title }}) from {{ event.start_datetime|date:"DATETIME_FORMAT" }} to {{ event.end_datetime|date:"TIME_FORMAT" }}{% if event.location %} at {{ event.location }}{% endif %}</li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                {% endfor %}
+                </ul>
+                <p class="mb-0">Please review your schedule to resolve these conflicts.</p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endif %}
 			<div class="row">
 				<div class="col-lg-7">
 					<div class="row">
@@ -88,7 +108,7 @@
 											<thead>
 												<tr class="table-active">
 													<th>#</th>
-													<th>Image</th>
+
 													<th>Lecturer</th>
 													<th>Unit</th>
 													<th>Date</th>
@@ -100,13 +120,9 @@
 												{% for lecture in scheduled_lectures %}
 												<tr>
 													<td>{{ forloop.counter }}</td>
-													<td>
-														<a href="{% url 'lecturer_calendar' lecture.lecturer.id %}">
-															<img src="{{ lecture.lecturer.staff.profile_pic.url }}" class="rounded-circle" height="50px" width="50px" alt="lecturer-dp">
-														</a>
-													</td>
-													<td>{{ lecture.lecturer.staff.first_name|title }} {{ lecture.lecturer.staff.last_name|title }}</td>
-													<td>{{ lecture.unit_name }}</td>
+
+													<td><a href="{% url 'lecturer_calendar' lecture.lecturer.id %}">{{ lecture.lecturer.staff.first_name|title }} {{ lecture.lecturer.staff.last_name|title }}</a></td>
+													<td>{{ lecture.unit_name.course.name }}</td>
 													<td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
 													<td>{{ lecture.start_time|date:"H:i" }} - {{ lecture.end_time|date:"H:i" }} HRS</td>
 													<td>
@@ -145,12 +161,10 @@
 												{{ time_since }} ago
 											</div>
 											{% endwith %}
-											<a href="{% url 'lecturer_calendar' lecture.lecturer.id %}">
-												<img src="{{ lecture.lecturer.staff.profile_pic.url }}" class="rounded-circle activity-badge align-self-start" height="30px" width="30px" alt="user-dp">
-											</a>
+
 											<div class="activity-content">
 												<p class="small fst-italic">
-													{{ lecture.unit_name }} is scheduled to start on <b>{{ lecture.lecture_date|date:"D d-M-Y" }}</b> at <b>{{ lecture.start_time|date:"h:iA" }}</b>
+													{{ lecture.unit_name.course.name }} is scheduled to start on <b>{{ lecture.lecture_date|date:"D d-M-Y" }}</b> at <b>{{ lecture.start_time|date:"h:iA" }}</b>
 												</p>
 											</div>
 										</div>

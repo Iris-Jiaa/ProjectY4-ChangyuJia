@@ -13,7 +13,7 @@
                                     <thead>
                                         <tr class="table-active">
                                             <th>#</th>
-                                            <th>Image</th>
+
                                             <th>Lecturer</th>
                                             <th>Unit</th>
                                             <th>Date</th>
@@ -25,9 +25,9 @@
                                         {% for lecture in scheduled_lectures %}
                                         <tr>
                                             <td>{{ forloop.counter }}</td>
-                                            <td><img src="{{ lecture.lecturer.staff.profile_pic.url }}" class="rounded-circle" height="45px" width="45px" alt="lecturer-dp"></td>
+
                                             <td>{{ lecture.lecturer.staff.first_name|title }} {{ lecture.lecturer.staff.last_name|title }}</td>
-                                            <td>{{ lecture.unit_name }}</td>
+                                            <td>{{ lecture.unit_name.course.name }}</td>
                                             <td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
                                             <td>{{ lecture.start_time|date:"H:i:a" }} - {{ lecture.end_time|date:"H:i:a" }}</td>
                                             <td>
@@ -81,7 +81,7 @@
                                 {% csrf_token %}
                                 {% include 'messages.html' %}
                                 <div class="col-md-12">
-                                    <p class="small"><b>Unit name: </b> {{ lec_obj.unit_name }}</p><hr class="mt-0 mb-2">
+                                    <p class="small"><b>Unit name: </b> {{ lec_obj.unit_name.course.name }}</p><hr class="mt-0 mb-2">
                                     {{ AttendanceConfirmationForm|crispy }}<hr>
                                 </div>
                                 <div class="d-grid gap-2">

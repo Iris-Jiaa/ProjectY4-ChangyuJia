@@ -13,7 +13,7 @@
                                     <thead>
                                         <tr class="table-active">
                                             <th>#</th>
-                                            <th>Image</th>
+
                                             <th class="text-center">Lecturer</th>
                                             <th class="text-center">Unit name</th>
                                             <th>Year of Study</th>
@@ -24,9 +24,9 @@
                                         {% for unit in booked_units %}
                                         <tr>
                                             <td>{{ forloop.counter }}</td>
-                                            <td><img class="rounded-circle" src="{{ unit.lecturer.staff.profile_pic.url }}" height="45px" width="45px" alt="dp"></td>
+
                                             <td>{{ unit.lecturer.staff.first_name|title }} {{ unit.lecturer.staff.last_name|title }}</td>
-                                            <td>{{ unit.course_name }}</td>
+                                            <td>{{ unit.course.name }}</td>
                                             <td class="text-end">{{ unit.year_of_study }}</td>
                                             <td class="text-end">{{ unit.semester }}</td>
                                         </tr>

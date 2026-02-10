@@ -1,6 +1,8 @@
-from .models import BookedUnit, Feedback, Lecture, RegisteredUnit, StudentPersonalEvent, MeetingRequest, LectureHall, FacultyPersonalEvent
+from .models import BookedUnit, Course, Feedback, Lecture, RegisteredUnit, StudentPersonalEvent, MeetingRequest, LectureHall, FacultyPersonalEvent
 from accounts.models import Faculty
 from django import forms
+from datetime import datetime, timedelta # Import datetime and timedelta for potential usage in forms
+from .utils import check_student_conflicts, EventItem
 
 class StudentUnitsRegistrationForm(forms.ModelForm):
     unit = forms.ChoiceField(widget=forms.SelectMultiple(attrs={
@@ -46,7 +48,7 @@ class StudentsAttendanceConfirmationForm(forms.ModelForm):
         model = Lecture
         fields = ['lecture_date', 'start_time', 'end_time', 'is_attending']
 
-class LecturerUnitsBookingForm(forms.ModelForm):
+class LecturerUnitsBookingForm(forms.Form): # Changed to forms.Form
     SELECT_STUDENT_COURSE = (
         (None, '-- Select your course --'),
         ('Agribusiness', 'Agricultural Business'),
@@ -67,12 +69,17 @@ class LecturerUnitsBookingForm(forms.ModelForm):
         ('1', 'Semester 1'),
         ('2', 'Semester 2'),
     )
-    
-    course_name = forms.CharField(widget=forms.TextInput(attrs={
-            'type': 'select', 'class': 'mb-0',
-        }),
-        label='Unit name',
-        help_text='Enter the name of the unit (<b>Enter course code & course title</b>)<br>'
+
+    lecturer = forms.ModelChoiceField(
+        queryset=Faculty.objects.all(),
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='Lecturer'
+    )
+    courses = forms.ModelMultipleChoiceField(
+        queryset=Course.objects.all(),
+        widget=forms.SelectMultiple(attrs={'class': 'form-control'}),
+        label='Courses to assign',
+        help_text='Select one or more courses to assign to the lecturer.'
     )
     students_course = forms.ChoiceField(widget=forms.Select(attrs={
             'type': 'select', 'class': 'mb-0',
@@ -97,12 +104,9 @@ class LecturerUnitsBookingForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super(LecturerUnitsBookingForm, self).__init__(*args, **kwargs)
-        # Filter all faculty staff in the OneToOneField dropdown
-        self.fields['lecturer'].queryset = Faculty.objects.filter()
+        # No need to filter lecturer queryset here as it's a direct field now
+        # self.fields['lecturer'].queryset = Faculty.objects.filter()
 
-    class Meta:
-        model = BookedUnit
-        fields = ['lecturer', 'course_name', 'students_course',  'year_of_study', 'semester']
 
 class FeedbackForm(forms.ModelForm):
     SELECT_TYPE_COMPLAINT = (
@@ -297,32 +301,75 @@ class StudentPersonalEventForm(forms.ModelForm):
         cleaned_data = super().clean()
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
-        user = self.instance.user
+        
+        # Ensure student instance is available from the request or form initialization
+        student = getattr(self, 'student_instance', None)
+        if not student and self.instance.pk: # If updating, get student from existing instance
+            student = self.instance.student
+        
+        if not student:
+            raise forms.ValidationError("Student information is missing for conflict check.")
 
-        # Check for overlapping personal events
-        conflicting_personal_events = StudentPersonalEvent.objects.filter(
-            user=user,
-            start_date__lt=end_date,
-            end_date__gt=start_date
-        ).exclude(pk=self.instance.pk)
-
-        if conflicting_personal_events.exists():
-            raise forms.ValidationError(
-                "You have another personal event scheduled at this time."
-            )
-
-        # Check for overlapping lectures
-        conflicting_lectures = Lecture.objects.filter(
-            unit_name__registeredunit__student=user.student,
-            lecture_date=start_date.date(),
-            start_time__lt=end_date.time(),
-            end_time__gt=start_date.time()
+        # Create a temporary EventItem for the proposed personal event
+        proposed_event_item = EventItem(
+            obj_id=self.instance.pk if self.instance.pk else None, # Include PK if it's an update
+            title=cleaned_data.get('title'),
+            start_datetime=start_date,
+            end_datetime=end_date,
+            location=None,
+            event_type='personal_event'
         )
 
-        if conflicting_lectures.exists():
-            raise forms.ValidationError(
-                "You have a lecture scheduled at this time."
-            )
+        # Fetch all existing events for the student, excluding the current event if it's an update
+        all_existing_events = []
+
+        # Get existing lectures
+        registered_units = RegisteredUnit.objects.filter(student=student)
+        lectures_qs = Lecture.objects.filter(
+            unit_name__in=registered_units.values('unit')
+        ).select_related('lecturer__staff', 'unit_name__course', 'lecture_hall')
+        
+        for lecture in lectures_qs:
+            all_existing_events.append(EventItem(
+                obj_id=lecture.id,
+                title=f"{lecture.unit_name.course.name} ({lecture.lecturer.staff.first_name} {lecture.lecturer.staff.last_name})",
+                start_datetime=datetime.combine(lecture.lecture_date, lecture.start_time),
+                end_datetime=datetime.combine(lecture.lecture_date, lecture.end_time),
+                location=lecture.lecture_hall.hall_no if lecture.lecture_hall else None,
+                event_type='lecture'
+            ))
+
+        # Get existing personal events, excluding the one being edited
+        personal_events_qs = StudentPersonalEvent.objects.filter(student=student)
+        if self.instance.pk:
+            personal_events_qs = personal_events_qs.exclude(pk=self.instance.pk)
+
+        for personal_event in personal_events_qs:
+            all_existing_events.append(EventItem(
+                obj_id=personal_event.id,
+                title=personal_event.title,
+                start_datetime=personal_event.start_date,
+                end_datetime=personal_event.end_date,
+                location=None,
+                event_type='personal_event'
+            ))
+        
+        # Now, check the proposed event against all_existing_events
+        potential_conflicts = []
+        for existing_event in all_existing_events:
+            # Check for time overlap
+            if proposed_event_item.start_datetime < existing_event.end_datetime and existing_event.start_datetime < proposed_event_item.end_datetime:
+                # Time conflict detected
+                conflict_desc = f"Time overlap with existing {existing_event.event_type.replace('_', ' ')}: '{existing_event.title}' from {existing_event.start_datetime.strftime('%H:%M')} to {existing_event.end_datetime.strftime('%H:%M')}."
+                
+                # Check for location conflict if both have locations and are different
+                if proposed_event_item.location and existing_event.location and proposed_event_item.location != existing_event.location:
+                    conflict_desc += f" Also, conflicting locations: proposed at '{proposed_event_item.location}' vs existing at '{existing_event.location}'."
+                
+                potential_conflicts.append(conflict_desc)
+        
+        if potential_conflicts:
+            raise forms.ValidationError(potential_conflicts)
 
         return cleaned_data
 

@@ -2,6 +2,7 @@ from django.urls import path, re_path
 from . import views
 
 urlpatterns = [
+    path('admin-dashboard/', views.AdminDashboardView.as_view(), name='admin_homepage'),
     path('homepage/', views.StudentHomepageView.as_view(), name='student_homepage'),
     path('lecturer/<str:lecturer_id>/calendar/', views.LecturerCalendarView.as_view(), name='lecturer_calendar'),
     path('lecturer/<str:lecturer_id>/find-slots/', views.find_available_slots, name='find_available_slots'),
@@ -22,7 +23,7 @@ urlpatterns = [
     path('edit-request/<str:request_id>/', views.EditMeetingRequestView.as_view(), name='edit_meeting_request'),
     path('<str:staff_id>/lecture/<str:staff_name>/schedule/', views.ScheduleLectureView.as_view(), name='schedule_lecture_list'),
     path('<str:staff_id>/lecture/<str:staff_name>/schedule/<str:unit_id>/', views.ScheduleLectureView.as_view(), name='schedule_lecture_submit'),
-    path('units/<str:staff_id>/book/', views.AssignUnitsforLecturersView.as_view(), name='assign_units'),
+    path('units/book/', views.AssignUnitsforLecturersView.as_view(), name='assign_units'),
     path('records/faculty/<str:staff_id>/<str:staff_name>/', views.LecturesDetailView.as_view(), name='view_faculty_lectures'),
     path('unit/<str:unit_id>/students/', views.ViewUnitStudentsView.as_view(), name='view_unit_students'),
     path('student/<str:student_id>/calendar/', views.StudentCalendarView.as_view(), name='view_student_calendar'),

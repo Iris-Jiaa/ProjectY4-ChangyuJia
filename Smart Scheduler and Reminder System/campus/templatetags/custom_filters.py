@@ -39,3 +39,19 @@ def custom_timesince_filter(value):
 @register.filter
 def get_item(dictionary, key):
     return dictionary.get(key)
+
+@register.filter(name='replace')
+def replace_filter(value, arg):
+    """
+    Replaces all occurrences of a substring with another substring.
+    Usage: {{ value|replace:"old_string|new_string" }}
+    """
+    if not isinstance(value, str) or not isinstance(arg, str):
+        return value
+
+    try:
+        old, new = arg.split('|', 1)
+    except ValueError:
+        return value # Invalid argument format
+
+    return value.replace(old, new)

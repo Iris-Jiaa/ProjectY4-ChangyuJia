@@ -1,5 +1,5 @@
 from django.contrib.auth.forms import UserCreationForm
-from .utils import validate_image_file
+
 from .models import Student, Faculty
 from django import forms
 from .models import User
@@ -226,7 +226,7 @@ class EditProfileForm(forms.ModelForm):
             'type': 'file', 'class': 'form-control mb-2', 'accept': '.jpg, .jpeg, .png',
         }),
         required=False,
-        validators=[validate_image_file],
+
     )
 
     class Meta:

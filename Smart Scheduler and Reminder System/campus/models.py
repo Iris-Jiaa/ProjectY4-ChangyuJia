@@ -3,22 +3,48 @@ from django.db import models
 
 import uuid # Added for unique ID generation
 
+class Course(models.Model):
+    """ Defines academic courses offered. """
+    id = models.CharField(max_length=30, primary_key=True, unique=True, editable=False)
+    name = models.CharField(max_length=80, unique=True, blank=False)
+    code = models.CharField(max_length=10, unique=True, blank=False)
+    description = models.TextField(blank=True, null=True)
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'Courses'
+
 class BookedUnit(models.Model):
     """ These are records of units assigned to a lecturer each semester. """
     id = models.CharField(max_length=30, primary_key=True, unique=True, editable=False)
     lecturer = models.ForeignKey(Faculty, on_delete=models.CASCADE)
     students_course = models.CharField(max_length=50, blank=False)
-    course_name = models.CharField(max_length=80, blank=False)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE) # Changed from course_name
     year_of_study = models.CharField(max_length=10, blank=False)
     semester = models.CharField(max_length=1, blank=False)
     booking_date = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
-        return self.course_name
+        return self.course.name
+    
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
     
     class Meta:
-        ordering = ['course_name', 'lecturer']
+        ordering = ['course__name', 'lecturer']
         verbose_name_plural = 'Booked units'
 
 class RegisteredUnit(models.Model):
@@ -30,12 +56,17 @@ class RegisteredUnit(models.Model):
     date_registered = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 
+    def __str__(self) -> str:
+        return self.student
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = str(uuid.uuid4())
+        super().save(*args, **kwargs)
+    
     class Meta:
         ordering = ['unit', 'student']
         verbose_name_plural = 'Registered units'
-    
-    def __str__(self) -> str:
-        return self.student
 
 class Lecture(models.Model):
     """ This db table stores records of all scheduled lectures. """
@@ -72,7 +103,6 @@ class LectureHall(models.Model):
     seating_capacity = models.PositiveIntegerField(default=0)
     floor = models.CharField(max_length=7, blank=False)
     rating = models.PositiveIntegerField(default=0, editable=False)
-    image = models.ImageField(upload_to='Lecture-Halls/img/', default='lecture-hall.jpg')
     date_created = models.DateTimeField(auto_now_add=True)
     date_edited = models.DateTimeField(auto_now=True)
 

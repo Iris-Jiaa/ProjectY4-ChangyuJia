@@ -1,10 +1,15 @@
-from .models import BookedUnit, Feedback, Lecture, LectureHall, RegisteredUnit
+from .models import BookedUnit, Feedback, Lecture, LectureHall, RegisteredUnit, Course
 from django.contrib import admin
+
+@admin.register(Course)
+class CourseAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code']
+    search_fields = ['name', 'code']
 
 @admin.register(BookedUnit)
 class BookedUnitsTable(admin.ModelAdmin):
-    list_display = ['lecturer', 'course_name', 'year_of_study', 'semester']
-    readonly_fields = ['lecturer', 'course_name', 'year_of_study', 'semester']
+    list_display = ['lecturer', 'course', 'year_of_study', 'semester']
+    readonly_fields = ['lecturer', 'course', 'year_of_study', 'semester']
 
 @admin.register(RegisteredUnit)
 class RegisteredUnitsRecords(admin.ModelAdmin):

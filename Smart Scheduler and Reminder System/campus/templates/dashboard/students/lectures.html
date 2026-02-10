@@ -15,7 +15,7 @@
                                     <thead>
                                         <tr class="table-active">
                                             <th>#</th>
-                                            <th>Image</th>
+
                                             <th class="text-center">Lecturer</th>
                                             <th class="text-center">Unit name</th>
                                             <th>Scheduled date</th>
@@ -28,13 +28,9 @@
                                         {% for lecture in scheduled_lectures %}
 											<tr>
 												<td>{{ forloop.counter }}</td>
-                                                <td>
-													<a href="{% url 'lecturer_calendar' lecture.lecturer.id %}">
-														<img src="{{ lecture.lecturer.staff.profile_pic.url }}" height="30px" width="30px" alt="">
-													</a>
-												</td>
+
 												<td>{{ lecture.lecturer.staff.first_name|title }} {{ lecture.lecturer.staff.last_name|title }}</td>
-												<td>{{ lecture.unit_name }}</td>
+												<td>{{ lecture.unit_name.course.name }}</td>
 												<td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
 												<td>{{ lecture.start_time|date:"H:i A" }} - {{ lecture.end_time|date:"H:i A" }}</td>
                                                 <td>{{ lecture.recurrence_pattern }}</td>
