@@ -3,6 +3,7 @@
 ##  Overview
 This system is a professional web-based application designed to address the common scheduling and communication challenges faced by educational institutions and community groups.
 ### To run the project offline;
+  - Create a virtual environment using the command `python -m venv .venv` or `python3 -m venv .venv`. 
   - On your terminal/cmd, type:
     -  `source .venv/bin/activate` (Linux)
     -  `.venv\Scripts\activate`  (Windows)

@@ -1,0 +1,17 @@
+.venv/
+venv/
+env/
+.idea/
+.vscode/
+db.sqlite3
+media/
+__pycache__/
+*.py[cod]
+*$py.class
+certs/
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+*.log
+*.cache
