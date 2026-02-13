@@ -5,7 +5,61 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 
-from .models import Lecture, Notification, MeetingRequest
+from .models import Lecture, Notification, MeetingRequest, StudentPersonalEvent, FacultyPersonalEvent
+
+@shared_task
+def send_personal_event_reminders():
+    now = timezone.now()
+    
+    # We add a buffer of 1 day to ensure we don't miss any events
+    # and also to handle long-running tasks.
+    student_events = StudentPersonalEvent.objects.filter(start_date__gte=now, start_date__lte=now + timedelta(days=1))
+    faculty_events = FacultyPersonalEvent.objects.filter(start_date__gte=now, start_date__lte=now + timedelta(days=1))
+
+    events = list(student_events) + list(faculty_events)
+
+    for event in events:
+        time_until_event = event.start_date - now
+
+        user = None
+        if hasattr(event, 'student'):
+            user = event.student.student_name
+        elif hasattr(event, 'faculty'):
+            user = event.faculty.staff
+
+        if user:
+            user_preferences = [pref for pref in user.reminder_preference.split(',') if pref]
+            sent_reminders = [rem for rem in event.sent_reminders.split(',') if rem]
+
+            for pref in user_preferences:
+                if pref in sent_reminders:
+                    continue # Skip if a reminder for this preference has already been sent
+
+                should_send = False
+                time_description = ""
+
+                if pref == '60min' and timedelta(minutes=59, seconds=30) <= time_until_event < timedelta(minutes=60, seconds=30):
+                    should_send = True
+                    time_description = "in 60 minutes"
+                elif pref == '30min' and timedelta(minutes=29, seconds=30) <= time_until_event < timedelta(minutes=30, seconds=30):
+                    should_send = True
+                    time_description = "in 30 minutes"
+                elif pref == '15min' and timedelta(minutes=14, seconds=30) <= time_until_event < timedelta(minutes=15, seconds=30):
+                    should_send = True
+                    time_description = "in 15 minutes"
+                elif pref == 'instant' and timedelta(seconds=0) <= time_until_event < timedelta(seconds=30):
+                    should_send = True
+                    time_description = "now"
+
+                if should_send:
+                    message = f"Reminder: Your event '{event.title}' is starting {time_description}."
+                    _send_notification(user, event, message)
+                    
+                    # Add the preference to the list of sent reminders and save the event
+                    sent_reminders.append(pref)
+                    event.sent_reminders = ",".join(sent_reminders)
+                    event.save()
+
 from accounts.models import User
 
 @shared_task

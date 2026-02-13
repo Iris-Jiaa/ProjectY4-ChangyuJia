@@ -170,6 +170,7 @@ class StudentPersonalEvent(models.Model):
     description = models.TextField(blank=True, null=True)
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
+    sent_reminders = models.CharField(max_length=100, blank=True, help_text="Comma-separated list of sent reminder times, e.g., '60min,15min'")
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 
@@ -194,6 +195,7 @@ class FacultyPersonalEvent(models.Model):
     description = models.TextField(blank=True, null=True)
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
+    sent_reminders = models.CharField(max_length=100, blank=True, help_text="Comma-separated list of sent reminder times, e.g., '60min,15min'")
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 

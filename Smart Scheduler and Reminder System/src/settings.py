@@ -176,4 +176,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'campus.tasks.send_upcoming_meeting_notifications',
         'schedule': 60.0,
     },
+    'send_personal_event_reminders': {
+        'task': 'campus.tasks.send_personal_event_reminders',
+        'schedule': 60.0,
+    },
 }

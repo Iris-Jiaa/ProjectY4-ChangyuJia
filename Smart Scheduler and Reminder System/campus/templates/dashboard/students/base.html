@@ -165,13 +165,35 @@
         }
         const csrftoken = getCookie('csrftoken');
         
-        document.addEventListener('DOMContentLoaded', function() {
-            // --- Existing logic for dropdown notifications ---
-            // (This part remains to handle the dropdown functionality)
-            // ... [omitted for brevity, but it's the same as before] ...
-
-            // --- New Toast Notification Logic ---
-            const toastContainer = document.getElementById('toast-container');
+            const markAllAsReadButton = document.querySelector('.mark-all-as-read');
+            if (markAllAsReadButton) {
+                markAllAsReadButton.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const url = "{% url 'mark_all_notifications_as_read' %}";
+                    fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json'
+                        },
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Hide the notification count badge
+                            const notificationBadge = document.querySelector('.notifications .badge-number');
+                            if (notificationBadge) {
+                                notificationBadge.style.display = 'none';
+                            }
+                            // Remove all notification items from the dropdown
+                            const notificationItems = document.querySelectorAll('.notification-item');
+                            notificationItems.forEach(item => item.remove());
+                            // remove the mark all as read button
+                            markAllAsReadButton.remove();
+                        }
+                    });
+                });
+            }
             let shownNotificationIds = new Set();
 
             function showToast(notification) {

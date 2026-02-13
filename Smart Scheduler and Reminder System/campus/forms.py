@@ -75,11 +75,10 @@ class LecturerUnitsBookingForm(forms.Form): # Changed to forms.Form
         widget=forms.Select(attrs={'class': 'form-control'}),
         label='Lecturer'
     )
-    courses = forms.ModelMultipleChoiceField(
-        queryset=Course.objects.all(),
-        widget=forms.SelectMultiple(attrs={'class': 'form-control'}),
+    courses = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Enter course names separated by commas'}),
         label='Courses to assign',
-        help_text='Select one or more courses to assign to the lecturer.'
+        help_text='Enter course names to assign to the lecturer (e.g., "Mathematics, Physics").'
     )
     students_course = forms.ChoiceField(widget=forms.Select(attrs={
             'type': 'select', 'class': 'mb-0',

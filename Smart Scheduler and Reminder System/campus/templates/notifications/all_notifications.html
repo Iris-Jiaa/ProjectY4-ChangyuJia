@@ -93,6 +93,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         newBadge.remove();
                     }
                     this.remove();
+
+                    // Update notification count in header
+                    const notificationBadge = document.querySelector('.notifications .badge-number');
+                    if (notificationBadge) {
+                        let currentCount = parseInt(notificationBadge.textContent);
+                        if (!isNaN(currentCount) && currentCount > 0) {
+                            currentCount--;
+                            notificationBadge.textContent = currentCount;
+                            if (currentCount === 0) {
+                                notificationBadge.style.display = 'none';
+                            }
+                        }
+                    }
                 }
             });
         });

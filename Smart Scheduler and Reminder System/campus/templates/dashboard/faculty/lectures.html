@@ -72,7 +72,7 @@
 													{% endif %}
 												</td>
                                                 <td class="text-center">
-                                                    <a href="{% url 'view_unit_students' lecture.unit_name.course.id %}" class="btn btn-sm btn-outline-info">View</a>
+                                                    <a href="{% url 'view_unit_students' lecture.unit_name.id %}" class="btn btn-sm btn-outline-info">View</a>
                                                 </td>
                                                 <td class="text-center">
                                                     <a href="{% url 'edit_schedule' lecture.lecturer.staff.id lecture.id %}" class="btn btn-sm btn-outline-primary">Edit</a>

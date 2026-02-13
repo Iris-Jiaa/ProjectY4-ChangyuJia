@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.contrib import messages
 from django.db.models import Avg, Q
 from django.views import View
-from .models import BookedUnit, Feedback, Lecture, LectureHall, RegisteredUnit, StudentPersonalEvent, MeetingRequest, FacultyPersonalEvent, Notification
+from .models import BookedUnit, Course, Feedback, Lecture, LectureHall, RegisteredUnit, StudentPersonalEvent, MeetingRequest, FacultyPersonalEvent, Notification
 from django.contrib.contenttypes.models import ContentType
 from datetime import time, datetime as dt, timedelta
 import json
@@ -33,6 +33,20 @@ class AdminDashboardView(View):
 
         context = {
             'scheduled_lectures': scheduled_lectures_QS,
+        }
+        return render(request, self.template_name, context)
+
+# new view for admin to list all students
+@method_decorator(login_required(login_url='login'), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+class AdminAllStudentsView(View):
+    template_name = 'dashboard/admin/all_students.html'
+
+    def get(self, request, *args, **kwargs):
+        all_students = Student.objects.all().select_related('student_name').order_by('student_name__last_name', 'student_name__first_name')
+        
+        context = {
+            'all_students': all_students,
         }
         return render(request, self.template_name, context)
 
@@ -79,11 +93,11 @@ class StudentHomepageView(View):
                 get_lecture.is_taught = True    # if the lecture's "is_taught" is False change it to True.
                 get_lecture.save()
 
-        # Scheduled lectures
-        events = Lecture.objects.filter(
-            lecturer__department=request.user.student.department,
-            unit_name__students_course=request.user.student.course,
-        )
+        # Scheduled lectures for the calendar
+        registered_units = RegisteredUnit.objects.filter(student=request.user.student)
+        booked_units = [reg_unit.unit for reg_unit in registered_units]
+        events = Lecture.objects.filter(unit_name__in=booked_units)
+        
         event_data = []
         for event in events:
             event_data.append({
@@ -606,7 +620,11 @@ class AssignUnitsforLecturersView(View):
             year_of_study = form.cleaned_data['year_of_study']
             semester = form.cleaned_data['semester']
 
-            for course in courses:
+            course_names = [name.strip() for name in form.cleaned_data['courses'].split(',') if name.strip()]
+
+            for course_name in course_names:
+                course, created = Course.objects.get_or_create(name=course_name, defaults={'code': course_name[:10].upper()}) # Assuming code can be auto-generated or handled otherwise if not provided. You might need to adjust this logic for creating new courses.
+                
                 # Check if a similar BookedUnit already exists to prevent duplicates
                 existing_booked_unit = BookedUnit.objects.filter(
                     lecturer=lecturer,
@@ -674,7 +692,7 @@ class ViewUnitStudentsView(View):
             # Ensure the lecturer accessing this page is the one assigned to the unit
             if unit.lecturer != request.user.faculty:
                 messages.error(request, "You are not authorized to view students for this unit.")
-                return redirect('lectures_records', request.user.faculty.id, request.user.faculty)
+                return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
 
             registered_students = RegisteredUnit.objects.filter(unit=unit).select_related('student__student_name')
             
@@ -685,7 +703,7 @@ class ViewUnitStudentsView(View):
             return render(request, self.template_name, context)
         except BookedUnit.DoesNotExist:
             messages.error(request, "The selected unit does not exist.")
-            return redirect('lectures_records', request.user.faculty.id, request.user.faculty)
+            return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
 
 
 @method_decorator(login_required(login_url='login'), name='get')
@@ -704,12 +722,11 @@ class StudentCalendarView(View):
 
             event_data = []
 
-            # Get student's lectures
-            student_lectures = Lecture.objects.filter(
-                unit_name__students_course=student.course,
-                unit_name__year_of_study=student.year,
-                unit_name__semester=student.semester
-            )
+            # Get student's registered units to accurately filter lectures.
+            registered_units = RegisteredUnit.objects.filter(student=student)
+            booked_units = [reg_unit.unit for reg_unit in registered_units]
+            student_lectures = Lecture.objects.filter(unit_name__in=booked_units)
+
             for event in student_lectures:
                 event_data.append({
                     'title': str(event.unit_name.course.name),

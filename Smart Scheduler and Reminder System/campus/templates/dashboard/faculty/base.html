@@ -190,7 +190,32 @@
             });
             const markAllAsReadButton = document.querySelector('.mark-all-as-read');
             if (markAllAsReadButton) {
-                // ... (rest of the dropdown logic remains the same)
+                markAllAsReadButton.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    const url = "{% url 'mark_all_notifications_as_read' %}";
+                    fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json'
+                        },
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Hide the notification count badge
+                            const notificationBadge = document.querySelector('.notifications .badge-number');
+                            if (notificationBadge) {
+                                notificationBadge.style.display = 'none';
+                            }
+                            // Remove all notification items from the dropdown
+                            const notificationItems = document.querySelectorAll('.notification-item');
+                            notificationItems.forEach(item => item.remove());
+                            // remove the mark all as read button
+                            markAllAsReadButton.remove();
+                        }
+                    });
+                });
             }
 
             // --- New Toast Notification Logic ---
