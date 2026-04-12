@@ -276,3 +276,39 @@ class PersonalReportTests(TestCase):
         self.assertEqual(response.context['total_completed'], 1)
         self.assertEqual(response.context['total_missed'], 1)
 
+class AdminCourseViewTests(TestCase):
+    def setUp(self):
+        # Create admin user
+        self.u_admin = User.objects.create_user(
+            username='admin_test', email='admin@test.com', dob='1985-01-01', gender='Male', password='password123',
+            is_staff=True, is_superuser=True
+        )
+        self.faculty_admin = Faculty.objects.create(
+            staff=self.u_admin, school='SCI', department='CS', position='Admin'
+        )
+        
+        # Create a course and booked unit
+        self.u_teacher = User.objects.create_user(
+            username='teacher_rep', email='tr@test.com', dob='1980-01-01', gender='Male', password='password123'
+        )
+        self.faculty = Faculty.objects.create(staff=self.u_teacher, school='SCI', department='CS', position='Lecturer')
+        self.course = Course.objects.create(name='Reporting 101', code='REP101')
+        self.booked_unit = BookedUnit.objects.create(
+            lecturer=self.faculty, course=self.course, students_course='CS', year_of_study='1', semester='1'
+        )
+
+    def test_admin_can_view_all_courses(self):
+        """Verify admin can access the all-courses list"""
+        self.client.login(email='admin@test.com', password='password123')
+        response = self.client.get('/campus/u/admin-dashboard/all-courses/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/admin/all_courses.html')
+        self.assertContains(response, 'Reporting 101')
+
+    def test_admin_can_view_unit_students(self):
+        """Verify admin can access student list for any unit"""
+        self.client.login(email='admin@test.com', password='password123')
+        response = self.client.get(f'/campus/u/unit/{self.booked_unit.id}/students/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/faculty/unit_students.html')
+

@@ -1,0 +1,61 @@
+{% extends 'dashboard/faculty/base.html' %}
+{% block title %}All Courses{% endblock %}
+{% load custom_filters %}
+
+{% block content %}
+<main id="main" class="main">
+    <div class="pagetitle">
+        <h1>Course Management</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'admin_homepage' %}">Home</a></li>
+                <li class="breadcrumb-item active">All Courses</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section dashboard">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card recent-sales overflow-auto">
+                    <div class="card-body">
+                        <h5 class="card-title">All Registered Courses / Units</h5>
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr class="table-active">
+                                    <th>#</th>
+                                    <th>Course Name</th>
+                                    <th>Lecturer</th>
+                                    <th>Students Course</th>
+                                    <th>Year/Semester</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for unit in all_units %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ unit.course.name }} ({{ unit.course.code }})</td>
+                                    <td>{{ unit.lecturer.staff.first_name }} {{ unit.lecturer.staff.last_name }}</td>
+                                    <td>{{ unit.students_course }}</td>
+                                    <td>Year {{ unit.year_of_study }} Sem {{ unit.semester }}</td>
+                                    <td class="text-center">
+                                        <a href="{% url 'view_unit_students' unit.id %}" class="btn btn-sm btn-info">
+                                            <i class="bi bi-people"></i> View Students & Attendance
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center">No courses found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}

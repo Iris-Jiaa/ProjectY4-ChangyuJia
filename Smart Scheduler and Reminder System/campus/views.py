@@ -51,6 +51,20 @@ class AdminAllStudentsView(View):
         }
         return render(request, self.template_name, context)
 
+# new view for admin to list all courses/units
+@method_decorator(login_required(login_url='login'), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+class AdminAllCoursesView(View):
+    template_name = 'dashboard/admin/all_courses.html'
+
+    def get(self, request, *args, **kwargs):
+        all_units = BookedUnit.objects.all().select_related('lecturer__staff', 'course').order_by('course__name')
+        
+        context = {
+            'all_units': all_units,
+        }
+        return render(request, self.template_name, context)
+
 
 # students views
 @method_decorator(login_required(login_url='login'), name='get')

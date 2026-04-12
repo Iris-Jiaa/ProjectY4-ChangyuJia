@@ -47,7 +47,7 @@
                         </div>
                         {% endif %}
                         {% if request.user.is_staff or request.user.is_superuser %}
-                        <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary mt-3">Back to Dashboard</a>
+                        <a href="{% url 'admin_homepage' %}" class="btn btn-secondary mt-3">Back to Dashboard</a>
                         {% else %}
                         <a href="{% url 'view_faculty_lectures' staff_id=request.user.faculty.id staff_name=request.user.faculty %}" class="btn btn-secondary mt-3">Back to Lecture Records</a>
                         {% endif %}
