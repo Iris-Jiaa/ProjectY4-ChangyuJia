@@ -39,4 +39,5 @@ urlpatterns = [
     path('notifications/unread/', views.get_unread_notifications, name='get_unread_notifications'),
     path('notifications/api/unread/', views.unread_notifications_api, name='unread_notifications_api'),
     path('event/signin/<str:event_type>/<str:event_id>/', views.sign_in_to_event, name='sign_in_to_event'),
+    path('personal-report/', views.personal_report, name='personal_report'),
 ]

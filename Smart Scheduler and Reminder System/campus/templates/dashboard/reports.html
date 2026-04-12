@@ -1,0 +1,148 @@
+{% extends base_template %}
+{% block title %}Personal Report{% endblock %}
+
+{% block content %}
+<main id="main" class="main">
+    <div class="pagetitle">
+        <h1>Personal Report</h1>
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% if user_type == 'Student' %}{% url 'student_homepage' %}{% else %}{% url 'faculty_homepage' %}{% endif %}">Home</a></li>
+                <li class="breadcrumb-item active">Reports</li>
+            </ol>
+        </nav>
+    </div>
+
+    <section class="section dashboard">
+        <div class="row">
+            <!-- Overall Summary Cards -->
+            <div class="col-xxl-4 col-md-6">
+                <div class="card info-card sales-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Completed Events <span>| Total</span></h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                <i class="bi bi-check-circle text-success"></i>
+                            </div>
+                            <div class="ps-3">
+                                <h6>{{ total_completed }}</h6>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xxl-4 col-md-6">
+                <div class="card info-card revenue-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Missed Events <span>| Total</span></h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                                <i class="bi bi-x-circle text-danger"></i>
+                            </div>
+                            <div class="ps-3">
+                                <h6>{{ total_missed }}</h6>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Lectures Statistics -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Lectures Summary</h5>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total Scheduled
+                                <span class="badge bg-primary rounded-pill">{{ lecture_stats.total }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Completed
+                                <span class="badge bg-success rounded-pill">{{ lecture_stats.completed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Missed
+                                <span class="badge bg-danger rounded-pill">{{ lecture_stats.missed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Upcoming
+                                <span class="badge bg-info rounded-pill">{{ lecture_stats.scheduled }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personal Events Statistics -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Personal Events</h5>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total Events
+                                <span class="badge bg-primary rounded-pill">{{ personal_stats.total }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Completed
+                                <span class="badge bg-success rounded-pill">{{ personal_stats.completed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Missed
+                                <span class="badge bg-danger rounded-pill">{{ personal_stats.missed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Pending
+                                <span class="badge bg-warning rounded-pill">{{ personal_stats.pending }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meeting Requests Statistics -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Meeting Requests</h5>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total Requests
+                                <span class="badge bg-primary rounded-pill">{{ meeting_stats.total }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Completed
+                                <span class="badge bg-success rounded-pill">{{ meeting_stats.completed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Missed
+                                <span class="badge bg-danger rounded-pill">{{ meeting_stats.missed }}</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Approved/Pending
+                                <span class="badge bg-info rounded-pill">{{ meeting_stats.approved|add:meeting_stats.pending }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visual Analytics (Optional: could add charts here later) -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Performance Overview</h5>
+                        <p>This report summarizes your activity within the Smart Scheduler system. Stay on track by minimizing missed events and completing your scheduled tasks!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+{% endblock %}

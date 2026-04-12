@@ -1149,3 +1149,102 @@ def sign_in_to_event(request, event_type, event_id):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
+
+@login_required(login_url='login')
+def personal_report(request):
+    """
+    Generates a personal report for the logged-in user (Student or Faculty).
+    Includes counts for completed, missed, and total events.
+    """
+    user = request.user
+    context = {}
+
+    if user.is_student:
+        student = user.student
+        
+        # 1. Lectures Stats (Shared event status)
+        registered_units = RegisteredUnit.objects.filter(student=student)
+        booked_units = [reg_unit.unit for reg_unit in registered_units]
+        lecture_qs = Lecture.objects.filter(unit_name__in=booked_units)
+        
+        lecture_stats = {
+            'total': lecture_qs.count(),
+            'completed': lecture_qs.filter(status='completed').count(),
+            'missed': lecture_qs.filter(status='missed').count(),
+            'scheduled': lecture_qs.filter(status='scheduled').count(),
+        }
+        
+        # 2. Personal Events Stats
+        personal_qs = StudentPersonalEvent.objects.filter(student=student)
+        personal_stats = {
+            'total': personal_qs.count(),
+            'completed': personal_qs.filter(status='completed').count(),
+            'missed': personal_qs.filter(status='missed').count(),
+            'pending': personal_qs.filter(status='pending').count(),
+        }
+        
+        # 3. Meeting Requests Stats
+        meeting_qs = MeetingRequest.objects.filter(student=student)
+        meeting_stats = {
+            'total': meeting_qs.count(),
+            'completed': meeting_qs.filter(status='completed').count(),
+            'missed': meeting_qs.filter(status='missed').count(),
+            'approved': meeting_qs.filter(status='approved').count(),
+            'pending': meeting_qs.filter(status='pending').count(),
+            'rejected': meeting_qs.filter(status='rejected').count(),
+        }
+        
+        context.update({
+            'user_type': 'Student',
+            'base_template': 'dashboard/students/base.html',
+            'lecture_stats': lecture_stats,
+            'personal_stats': personal_stats,
+            'meeting_stats': meeting_stats,
+            'total_completed': lecture_stats['completed'] + personal_stats['completed'] + meeting_stats['completed'],
+            'total_missed': lecture_stats['missed'] + personal_stats['missed'] + meeting_stats['missed'],
+        })
+
+    elif hasattr(user, 'faculty'):
+        faculty = user.faculty
+        
+        # 1. Lectures Stats
+        lecture_qs = Lecture.objects.filter(lecturer=faculty)
+        lecture_stats = {
+            'total': lecture_qs.count(),
+            'completed': lecture_qs.filter(status='completed').count(),
+            'missed': lecture_qs.filter(status='missed').count(),
+            'scheduled': lecture_qs.filter(status='scheduled').count(),
+        }
+        
+        # 2. Personal Events Stats
+        personal_qs = FacultyPersonalEvent.objects.filter(faculty=faculty)
+        personal_stats = {
+            'total': personal_qs.count(),
+            'completed': personal_qs.filter(status='completed').count(),
+            'missed': personal_qs.filter(status='missed').count(),
+            'pending': personal_qs.filter(status='pending').count(),
+        }
+        
+        # 3. Meeting Requests Stats (Received)
+        meeting_qs = MeetingRequest.objects.filter(lecturer=faculty)
+        meeting_stats = {
+            'total': meeting_qs.count(),
+            'completed': meeting_qs.filter(status='completed').count(),
+            'missed': meeting_qs.filter(status='missed').count(),
+            'approved': meeting_qs.filter(status='approved').count(),
+            'pending': meeting_qs.filter(status='pending').count(),
+            'rejected': meeting_qs.filter(status='rejected').count(),
+        }
+        
+        context.update({
+            'user_type': 'Faculty',
+            'base_template': 'dashboard/faculty/base.html',
+            'lecture_stats': lecture_stats,
+            'personal_stats': personal_stats,
+            'meeting_stats': meeting_stats,
+            'total_completed': lecture_stats['completed'] + personal_stats['completed'] + meeting_stats['completed'],
+            'total_missed': lecture_stats['missed'] + personal_stats['missed'] + meeting_stats['missed'],
+        })
+
+    return render(request, 'dashboard/reports.html', context)

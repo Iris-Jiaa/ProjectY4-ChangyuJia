@@ -232,3 +232,47 @@ class EventStatusJudgementTests(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.status, 'missed')
 
+class PersonalReportTests(TestCase):
+    def setUp(self):
+        self.u_student = User.objects.create_user(
+            username='report_student', email='rs@test.com', dob='2002-01-01', gender='Female', password='password123',
+            is_student=True
+        )
+        self.student = Student.objects.create(student_name=self.u_student, reg_no='REG/REP01', school='SCI', department='CS', year='1', semester='1', programme='CS', course='CS')
+        
+    def test_personal_report_view_status_code(self):
+        """Verify the personal report view returns 200 for a logged-in student"""
+        login_success = self.client.login(email='rs@test.com', password='password123')
+        self.assertTrue(login_success)
+        # Use the full URL including /campus/u/ prefix as seen in src/urls.py
+        response = self.client.get('/campus/u/personal-report/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/reports.html')
+
+    def test_personal_report_counts(self):
+        """Verify the counts in the personal report are correct"""
+        # Create some events at different times to avoid validation error
+        now = timezone.now()
+        StudentPersonalEvent.objects.create(
+            id='rep_ev1', student=self.student, title='E1', 
+            start_date=now + timezone.timedelta(hours=1), 
+            end_date=now + timezone.timedelta(hours=2),
+            status='completed', is_signed_in=True
+        )
+        StudentPersonalEvent.objects.create(
+            id='rep_ev2', student=self.student, title='E2', 
+            start_date=now + timezone.timedelta(hours=3), 
+            end_date=now + timezone.timedelta(hours=4),
+            status='missed', is_signed_in=False
+        )
+        
+        login_success = self.client.login(email='rs@test.com', password='password123')
+        self.assertTrue(login_success)
+        response = self.client.get('/campus/u/personal-report/')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['personal_stats']['completed'], 1)
+        self.assertEqual(response.context['personal_stats']['missed'], 1)
+        self.assertEqual(response.context['total_completed'], 1)
+        self.assertEqual(response.context['total_missed'], 1)
+
