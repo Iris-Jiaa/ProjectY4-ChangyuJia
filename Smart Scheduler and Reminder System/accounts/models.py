@@ -15,7 +15,7 @@ class User(AbstractUser):
         ('both', 'Both'),
     ]
 
-    id = models.CharField(max_length=30, primary_key=True, unique=True, editable=False)
+    id = models.CharField(max_length=50, primary_key=True, unique=True, editable=False)
     first_name = models.CharField(max_length=15, blank=False)
     last_name = models.CharField(max_length=15, blank=False)
     email = models.EmailField(unique=True)
@@ -55,7 +55,7 @@ class User(AbstractUser):
 
 class Student(models.Model):
     """ This model stores info about students records. """
-    id = models.CharField(max_length=30, primary_key=True, unique=True, editable=False)
+    id = models.CharField(max_length=50, primary_key=True, unique=True, editable=False)
     student_name = models.OneToOneField(User, on_delete=models.CASCADE, editable=False)
     school = models.CharField(max_length=70, blank=False)
     department = models.CharField(max_length=70, blank=False)
@@ -76,7 +76,7 @@ class Student(models.Model):
 
 class Faculty(models.Model):
     """ This db table stores records of all staff in a given faculty. In this case lecturer and Admin are the only members in the faculty. """
-    id = models.CharField(max_length=30, primary_key=True, unique=True, editable=False)
+    id = models.CharField(max_length=50, primary_key=True, unique=True, editable=False)
     staff = models.OneToOneField(User, on_delete=models.CASCADE, editable=False)
     school = models.CharField(max_length=70, blank=False)
     department = models.CharField(max_length=40, blank=False)

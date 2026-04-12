@@ -280,6 +280,35 @@
             </div>
         </div>
 		
+        <!-- View Event Modal -->
+        <div class="modal fade" id="viewEventModal" tabindex="-1" aria-labelledby="viewEventModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="viewEventModalLabel">Event Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <h4 id="viewEventTitle"></h4>
+                        <p id="viewEventDescription"></p>
+                        <p><strong>Time:</strong> <span id="viewEventTime"></span></p>
+                        <p><strong>Status:</strong> <span id="viewEventStatus" class="badge"></span></p>
+                        <div id="signInContainer" class="mt-3" style="display: none;">
+                            <button type="button" class="btn btn-success w-100" id="eventSignInBtn">
+                                <i class="bi bi-check-circle"></i> Sign In / Confirm Attendance
+                            </button>
+                        </div>
+                        <div id="signedInMsg" class="alert alert-success mt-3" style="display: none;">
+                            <i class="bi bi-check-circle-fill"></i> You have signed in to this event.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
 		<script>
             // Helper to format dates for datetime-local input
             function toLocalISOString(date) {
@@ -318,15 +347,107 @@
                         }
                     ],
                     eventClick: function(info) {
-                        // Check if it's a personal event by looking for a property personal events have
-                        if (info.event.extendedProps.description !== undefined) {
-                            document.getElementById('edit_event_id').value = info.event.id;
-                            editEventForm.querySelector('#id_title').value = info.event.title;
-                            editEventForm.querySelector('#id_description').value = info.event.extendedProps.description || '';
-                            editEventForm.querySelector('#id_start_date').value = toLocalISOString(info.event.start);
-                            editEventForm.querySelector('#id_end_date').value = info.event.end ? toLocalISOString(info.event.end) : toLocalISOString(info.event.start);
+                        var event = info.event;
+                        var props = event.extendedProps;
+                        
+                        if (props.event_type === 'lecture' || props.event_type === 'meeting') {
+                            document.getElementById('viewEventTitle').innerText = event.title;
+                            document.getElementById('viewEventDescription').innerText = props.description || '';
+                            document.getElementById('viewEventTime').innerText = moment(event.start).format('YYYY-MM-DD HH:mm') + ' - ' + moment(event.end).format('HH:mm');
                             
-                            editEventModal.show();
+                            var statusEl = document.getElementById('viewEventStatus');
+                            statusEl.innerText = props.status.charAt(0).toUpperCase() + props.status.slice(1);
+                            statusEl.className = 'badge ' + (props.status === 'completed' ? 'bg-success' : (props.status === 'missed' ? 'bg-danger' : 'bg-primary'));
+                            
+                            var signInContainer = document.getElementById('signInContainer');
+                            var signedInMsg = document.getElementById('signedInMsg');
+                            var signInBtn = document.getElementById('eventSignInBtn');
+
+                            if (props.is_signed_in) {
+                                signInContainer.style.display = 'none';
+                                signedInMsg.style.display = 'block';
+                            } else if (props.status === 'scheduled' || props.status === 'approved') {
+                                signInContainer.style.display = 'block';
+                                signedInMsg.style.display = 'none';
+                                
+                                signInBtn.onclick = function() {
+                                    if (props.event_type === 'lecture') {
+                                        window.location.href = '/campus/lecture/' + event.id + '/schedule/{{ request.user.student.id }}/confirm/';
+                                    } else {
+                                        fetch('/campus/event/signin/meeting/' + event.id + '/', {
+                                            method: 'POST',
+                                            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                                        })
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            if (data.status === 'success') {
+                                                new bootstrap.Modal(document.getElementById('viewEventModal')).hide();
+                                                location.reload();
+                                            } else {
+                                                alert('Error signing in: ' + data.message);
+                                            }
+                                        });
+                                    }
+                                };
+                            } else {
+                                signInContainer.style.display = 'none';
+                                signedInMsg.style.display = 'none';
+                            }
+                            
+                            new bootstrap.Modal(document.getElementById('viewEventModal')).show();
+                        } else if (props.description !== undefined) {
+                            // Personal Event - show status and sign-in option too
+                            document.getElementById('edit_event_id').value = event.id;
+                            editEventForm.querySelector('#id_title').value = event.title;
+                            editEventForm.querySelector('#id_description').value = props.description || '';
+                            editEventForm.querySelector('#id_start_date').value = toLocalISOString(event.start);
+                            editEventForm.querySelector('#id_end_date').value = event.end ? toLocalISOString(event.end) : toLocalISOString(event.start);
+                            
+                            // Check if we can add a sign-in button to the edit modal too
+                            // For now, let's use the viewEventModal for personal events too if they want to sign in
+                            if (confirm('Do you want to View/Sign-in (OK) or Edit (Cancel) this personal event?')) {
+                                document.getElementById('viewEventTitle').innerText = event.title;
+                                document.getElementById('viewEventDescription').innerText = props.description || '';
+                                document.getElementById('viewEventTime').innerText = moment(event.start).format('YYYY-MM-DD HH:mm') + ' - ' + moment(event.end).format('HH:mm');
+                                
+                                var statusEl = document.getElementById('viewEventStatus');
+                                var status = props.status || 'pending';
+                                statusEl.innerText = status.charAt(0).toUpperCase() + status.slice(1);
+                                statusEl.className = 'badge ' + (status === 'completed' ? 'bg-success' : (status === 'missed' ? 'bg-danger' : 'bg-primary'));
+                                
+                                var signInContainer = document.getElementById('signInContainer');
+                                var signedInMsg = document.getElementById('signedInMsg');
+                                var signInBtn = document.getElementById('eventSignInBtn');
+
+                                if (props.is_signed_in) {
+                                    signInContainer.style.display = 'none';
+                                    signedInMsg.style.display = 'block';
+                                } else if (status === 'pending') {
+                                    signInContainer.style.display = 'block';
+                                    signedInMsg.style.display = 'none';
+                                    
+                                    signInBtn.onclick = function() {
+                                        fetch('/campus/event/signin/personal/' + event.id + '/', {
+                                            method: 'POST',
+                                            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+                                        })
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            if (data.status === 'success') {
+                                                location.reload();
+                                            } else {
+                                                alert('Error signing in: ' + data.message);
+                                            }
+                                        });
+                                    };
+                                } else {
+                                    signInContainer.style.display = 'none';
+                                    signedInMsg.style.display = 'none';
+                                }
+                                new bootstrap.Modal(document.getElementById('viewEventModal')).show();
+                            } else {
+                                editEventModal.show();
+                            }
                         }
                     },
                     dateClick: function(info) {
@@ -334,6 +455,12 @@
                         addEventForm.reset(); // Reset form before showing
                         document.getElementById('add-form-errors').innerText = ''; // Clear previous errors
                         addEventForm.querySelector('#id_start_date').value = toLocalISOString(info.date);
+                        
+                        // Default end date to 1 hour after start date
+                        let endDate = new Date(info.date);
+                        endDate.setHours(endDate.getHours() + 1);
+                        addEventForm.querySelector('#id_end_date').value = toLocalISOString(endDate);
+                        
                         addEventModal.show();
                     }
 				});
@@ -355,7 +482,13 @@
                             addEventForm.reset();
                             calendar.refetchEvents();
                         } else {
-                            document.getElementById('add-form-errors').innerText = 'Please correct the errors below.';
+                            let errorMsg = '';
+                            if (data.errors) {
+                                for (let field in data.errors) {
+                                    errorMsg += data.errors[field].join(', ') + ' ';
+                                }
+                            }
+                            document.getElementById('add-form-errors').innerText = errorMsg || 'Please correct the errors.';
                         }
                     })
                     .catch(error => console.error('Error:', error));
@@ -379,7 +512,13 @@
                             editEventModal.hide();
                             calendar.refetchEvents();
                         } else {
-                            document.getElementById('edit-form-errors').innerText = 'Please correct the errors below.';
+                            let errorMsg = '';
+                            if (data.errors) {
+                                for (let field in data.errors) {
+                                    errorMsg += data.errors[field].join(', ') + ' ';
+                                }
+                            }
+                            document.getElementById('edit-form-errors').innerText = errorMsg || 'Please correct the errors.';
                         }
                     })
                     .catch(error => console.error('Error:', error));

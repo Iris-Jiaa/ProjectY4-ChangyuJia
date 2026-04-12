@@ -180,4 +180,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'campus.tasks.send_personal_event_reminders',
         'schedule': 60.0,
     },
-}
+    'auto-judge-event-statuses': {
+        'task': 'campus.tasks.auto_judge_event_statuses',
+        'schedule': 300.0, # Run every 5 minutes
+    },
+    }

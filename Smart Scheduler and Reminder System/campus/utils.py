@@ -19,28 +19,6 @@ class EventItem:
                 f"{' at ' + self.location if self.location else ''} [{self.event_type}]")
 
 def check_student_conflicts(student):
-    """
-    Detects time and location conflicts for a given student's scheduled lectures and personal events.
-
-    Args:
-        student (Student): The student instance for whom to check conflicts.
-
-    Returns:
-        list: A list of dictionaries, where each dictionary describes a conflict.
-              Example:
-              [
-                  {
-                      'type': 'time_conflict',
-                      'description': 'Event A and Event B overlap in time.',
-                      'events': [EventItem_A, EventItem_B]
-                  },
-                  {
-                      'type': 'location_conflict',
-                      'description': 'Event C and Event D require different locations at the same time.',
-                      'events': [EventItem_C, EventItem_D]
-                  }
-              ]
-    """
     all_events = []
 
     # 1. Fetch and normalize Lectures

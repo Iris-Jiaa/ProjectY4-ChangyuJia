@@ -13,6 +13,7 @@ urlpatterns = [
     path('calendar/events/update/<str:event_id>/', views.update_personal_event, name='update_personal_event'),
     path('calendar/events/delete/<str:event_id>/', views.delete_personal_event, name='delete_personal_event'),
     path('units/<str:student_id>/register/', views.StudentsUnitsRegistrationView.as_view(), name='unit_registration'),
+    path('units/<str:student_id>/unregister/<str:unit_id>/', views.unregister_unit, name='unregister_unit'),
     path('lectures/<str:_student>/', views.StudentsLecturesDetailView.as_view(), name='student_lecture_records'),
     path('lecture/<str:lecture_id>/schedule/<str:_student>/confirm/', views.LectureAttendanceConfirmationView.as_view(), name='confirm_attendance'),
     path('halls/<str:hall_id>/feedback/', views.SubmitFeedbackView.as_view(), name='student_feedback'),
@@ -37,4 +38,5 @@ urlpatterns = [
     path('notifications/mark-all-read/', views.mark_all_notifications_as_read, name='mark_all_notifications_as_read'),
     path('notifications/unread/', views.get_unread_notifications, name='get_unread_notifications'),
     path('notifications/api/unread/', views.unread_notifications_api, name='unread_notifications_api'),
+    path('event/signin/<str:event_type>/<str:event_id>/', views.sign_in_to_event, name='sign_in_to_event'),
 ]

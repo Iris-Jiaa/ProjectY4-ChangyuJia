@@ -16,6 +16,7 @@
                                         <th>Lecturer</th>
 
                                         <th>Registered</th>
+                                        <th>Action</th>
                                     </thead>
                                     <tbody>
                                         {% for units in registered_units %}
@@ -29,10 +30,17 @@
                                                 <span><i class="bi-check-circle-fill" style="color: #0e9437;"></i></span>
                                                 {% endif %}
                                             </td>
+                                            <td class="text-center">
+                                                <a href="{% url 'unregister_unit' student_id=request.user.student.id unit_id=units.pk %}" 
+                                                   class="btn btn-danger btn-sm" 
+                                                   onclick="return confirm('Are you sure you want to unregister this unit?')">
+                                                    <i class="bi-trash"></i> Unregister
+                                                </a>
+                                            </td>
                                         </tr>
                                         {% empty %}
                                         <tr>
-                                            <td colspan="4" class="small text-center fst-italic text-muted">No data available</td>
+                                            <td colspan="5" class="small text-center fst-italic text-muted">No data available</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>

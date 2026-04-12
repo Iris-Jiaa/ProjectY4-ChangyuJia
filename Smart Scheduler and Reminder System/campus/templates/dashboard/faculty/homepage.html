@@ -1,4 +1,5 @@
 {% extends 'dashboard/faculty/base.html' %}{% block title %}Dashboard{% endblock %}
+{% load crispy_forms_tags %}
 {% load custom_filters %}
 	{% load static %}
 	{% block content %}
@@ -6,6 +7,12 @@
 		<section class="section dashboard">
 			<div class="row">
 				<div class="col-lg-7">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Faculty Dashboard</h5>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEventModal">
+                            <i class="bi bi-plus-circle me-1"></i> Add Personal Event
+                        </button>
+                    </div>
 					<div class="row">
 						<div class="col-md-12 col-lg-12">
 							<div class="card info-card schedule-lecture-card">
@@ -172,22 +179,190 @@
 			</div>
 		</section>
 	</main>
+
+	<!-- Add Event Modal -->
+	<div class="modal fade" id="addEventModal" tabindex="-1">
+	<div class="modal-dialog">
+	<div class="modal-content">
+	<div class="modal-header">
+	<h5 class="modal-title">Add Personal Event</h5>
+	<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	</div>
+	<div class="modal-body">
+	<form id="addEventForm">
+	{% csrf_token %}
+	{{ personal_event_form|crispy }}
+	<div id="add-form-errors" class="text-danger mt-2"></div>
+	</form>
+	</div>
+	<div class="modal-footer">
+	<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+	<button type="button" class="btn btn-primary" id="saveEventBtn">Save Event</button>
+	</div>
+	</div>
+	</div>
+	</div>
+
+	<!-- Edit/Delete Event Modal -->
+	<div class="modal fade" id="eventModal" tabindex="-1">
+	<div class="modal-dialog">
+	<div class="modal-content">
+	<div class="modal-header">
+	<h5 class="modal-title" id="eventModalLabel">Event Details</h5>
+	<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	</div>
+	<div class="modal-body">
+	<form id="editEventForm">
+	{% csrf_token %}
+	{{ personal_event_form|crispy }}
+	<div id="edit-form-errors" class="text-danger mt-2"></div>
+	</form>
+	</div>
+	<div class="modal-footer">
+	<button type="button" class="btn btn-danger" id="deleteEventBtn">Delete</button>
+	<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+	<button type="button" class="btn btn-primary" id="updateEventBtn">Update</button>
+	</div>
+	</div>
+	</div>
+	</div>
+
 	<script>
 		document.addEventListener('DOMContentLoaded', function() {
 			var calendarEl = document.getElementById('calendar');
-			var events = {{ events|safe }};
+			var lectureEvents = {{ events|safe }};
+
+	var addEventModal = new bootstrap.Modal(document.getElementById('addEventModal'));
+	var eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
+	var addEventForm = document.getElementById('addEventForm');
+	var editEventForm = document.getElementById('editEventForm');
+	var currentEventId = null;
+
+	// Helper to format dates for datetime-local input
+	function toLocalISOString(date) {
+	const d = new Date(date);
+	const pad = (num) => (num < 10 ? '0' + num : num);
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	}
 
 			var calendar = new FullCalendar.Calendar(calendarEl, {
 				initialView: 'dayGridMonth',
 				height: 'auto',
+	selectable: true,
 				headerToolbar: {
 					left: 'prev,next today',
 					center: 'title',
 					right: 'dayGridMonth,timeGridWeek,timeGridDay'
 				},
-				events: events
+				eventSources: [
+	{
+	events: lectureEvents
+	},
+	{
+	url: "{% url 'get_personal_events' %}",
+	failure: function() {
+	alert('There was an error while fetching personal events!');
+	}
+	}
+	],
+	dateClick: function(info) {
+	addEventForm.reset();
+	document.getElementById('add-form-errors').innerText = '';
+	addEventForm.querySelector('#id_start_date').value = toLocalISOString(info.date);
+	// Default end date to 1 hour after start date
+	let endDate = new Date(info.date);
+	endDate.setHours(endDate.getHours() + 1);
+	addEventForm.querySelector('#id_end_date').value = toLocalISOString(endDate);
+	addEventModal.show();
+	},
+	eventClick: function(info) {
+	if (info.event.url || !info.event.id) return; // Ignore lectures or events without ID
+
+	currentEventId = info.event.id;
+	document.getElementById('edit-form-errors').innerText = '';
+
+	editEventForm.querySelector('#id_title').value = info.event.title;
+	editEventForm.querySelector('#id_description').value = info.event.extendedProps.description || '';
+	editEventForm.querySelector('#id_start_date').value = toLocalISOString(info.event.start);
+	editEventForm.querySelector('#id_end_date').value = toLocalISOString(info.event.end);
+
+	eventModal.show();
+	}
 			});
 			calendar.render();
+
+	// Handle ADD form submission
+	document.getElementById('saveEventBtn').addEventListener('click', function() {
+	var formData = new FormData(addEventForm);
+
+	fetch("{% url 'add_personal_event' %}", {
+	method: 'POST',
+	body: formData,
+	headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+	})
+	.then(response => response.json())
+	.then(data => {
+	if (data.status === 'success') {
+	addEventModal.hide();
+	addEventForm.reset();
+	calendar.refetchEvents();
+	} else {
+	let errorMsg = '';
+    if (data.errors) {
+        for (let field in data.errors) {
+            errorMsg += data.errors[field].join(', ') + ' ';
+        }
+    }
+	document.getElementById('add-form-errors').innerText = errorMsg || 'Please correct the errors.';
+	}
+	})
+	.catch(error => console.error('Error:', error));
+	});
+
+	// Handle UPDATE
+	document.getElementById('updateEventBtn').addEventListener('click', function() {
+	var formData = new FormData(editEventForm);
+	var url = "{% url 'update_personal_event' 0 %}".replace('0', currentEventId);
+
+	fetch(url, {
+	method: 'POST',
+	body: formData,
+	headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+	})
+	.then(response => response.json())
+	.then(data => {
+	if (data.status === 'success') {
+	eventModal.hide();
+	calendar.refetchEvents();
+	} else {
+	let errorMsg = '';
+    if (data.errors) {
+        for (let field in data.errors) {
+            errorMsg += data.errors[field].join(', ') + ' ';
+        }
+    }
+	document.getElementById('edit-form-errors').innerText = errorMsg || 'Please correct the errors.';
+	}
+	});
+	});
+
+	// Handle DELETE
+	document.getElementById('deleteEventBtn').addEventListener('click', function() {
+	if (confirm('Are you sure you want to delete this event?')) {
+	var url = "{% url 'delete_personal_event' 0 %}".replace('0', currentEventId);
+	fetch(url, {
+	method: 'POST',
+	headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+	})
+	.then(response => response.json())
+	.then(data => {
+	if (data.status === 'success') {
+	eventModal.hide();
+	calendar.refetchEvents();
+	}
+	});
+	}
+	});
 		});
 	</script>
 	{% endblock %}

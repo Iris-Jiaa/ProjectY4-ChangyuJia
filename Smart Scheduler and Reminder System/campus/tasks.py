@@ -197,3 +197,48 @@ def send_upcoming_meeting_notifications():
                 if should_send:
                     message = f"Reminder: You have a meeting with {other_participant_name} titled '{meeting.title}' starting {time_description}."
                     _send_notification(user, meeting, message)
+
+
+@shared_task
+def auto_judge_event_statuses():
+    now = timezone.now()
+    
+    # 1. Lectures
+    # Lectures use lecture_date and end_time (TimeField)
+    # We need to combine them to compare with 'now'
+    lectures = Lecture.objects.filter(status='scheduled')
+    for lecture in lectures:
+        end_datetime = timezone.make_aware(datetime.combine(lecture.lecture_date, lecture.end_time))
+        if end_datetime < now:
+            if lecture.total_students > 0 or lecture.is_attending:
+                lecture.status = 'completed'
+            else:
+                lecture.status = 'missed'
+            lecture.save()
+
+    # 2. Student Personal Events
+    student_events = StudentPersonalEvent.objects.filter(status='pending', end_date__lt=now)
+    for event in student_events:
+        if event.is_signed_in:
+            event.status = 'completed'
+        else:
+            event.status = 'missed'
+        event.save()
+
+    # 3. Faculty Personal Events
+    faculty_events = FacultyPersonalEvent.objects.filter(status='pending', end_date__lt=now)
+    for event in faculty_events:
+        if event.is_signed_in:
+            event.status = 'completed'
+        else:
+            event.status = 'missed'
+        event.save()
+
+    # 4. Meeting Requests
+    meetings = MeetingRequest.objects.filter(status__in=['approved', 'pending'], end_time__lt=now)
+    for meeting in meetings:
+        if meeting.is_signed_in:
+            meeting.status = 'completed'
+        else:
+            meeting.status = 'missed'
+        meeting.save()

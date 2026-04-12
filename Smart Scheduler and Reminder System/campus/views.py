@@ -1,4 +1,4 @@
-from .forms import EditScheduledLectureForm, FeedbackForm, LecturerUnitsBookingForm, StudentsAttendanceConfirmationForm, StudentPersonalEventForm, MeetingRequestForm, ScheduleLectureForm, EditMeetingRequestForm
+from .forms import EditScheduledLectureForm, FeedbackForm, LecturerUnitsBookingForm, StudentsAttendanceConfirmationForm, StudentPersonalEventForm, FacultyPersonalEventForm, MeetingRequestForm, ScheduleLectureForm, EditMeetingRequestForm
 from accounts.models import Student, Faculty
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils.decorators import method_decorator
@@ -11,6 +11,7 @@ from .models import BookedUnit, Course, Feedback, Lecture, LectureHall, Register
 from django.contrib.contenttypes.models import ContentType
 from datetime import time, datetime as dt, timedelta
 import json
+import random
 from django.utils import timezone # Added for IntegrityError fix
 from .utils import check_student_conflicts # Import the conflict detection utility
 
@@ -93,30 +94,39 @@ class StudentHomepageView(View):
                 get_lecture.is_taught = True    # if the lecture's "is_taught" is False change it to True.
                 get_lecture.save()
 
-        # Scheduled lectures for the calendar
+        # Scheduled lectures for the calendar - ONLY LECTURES
         registered_units = RegisteredUnit.objects.filter(student=request.user.student)
         booked_units = [reg_unit.unit for reg_unit in registered_units]
-        events = Lecture.objects.filter(unit_name__in=booked_units)
+        lecture_events_objs = Lecture.objects.filter(unit_name__in=booked_units)
         
-        event_data = []
-        for event in events:
-            event_data.append({
+        lecture_events = []
+        for event in lecture_events_objs:
+            lecture_events.append({
+                'id': event.id,
                 'title': str(event.unit_name.course.name),
                 'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                 'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
+                'is_signed_in': event.is_attending,
+                'status': event.status,
+                'event_type': 'lecture',
                 'backgroundColor': '#f56954', # red
                 'borderColor': '#f56954' # red
             })
-        
-        # Personal events
-        personal_events = StudentPersonalEvent.objects.filter(student=request.user.student)
-        for event in personal_events:
-            event_data.append({
-                'title': event.title,
-                'start': event.start_date.strftime('%Y-%m-%dT%H:%M:%S'),
-                'end': event.end_date.strftime('%Y-%m-%dT%H:%M:%S'),
-                'backgroundColor': '#00a65a', # green
-                'borderColor': '#00a65a' # green
+
+        # Add approved meetings to calendar
+        approved_meetings = MeetingRequest.objects.filter(student=request.user.student, status='approved')
+        for meeting in approved_meetings:
+            lecture_events.append({
+                'id': meeting.id,
+                'title': meeting.title,
+                'start': meeting.start_time.isoformat(),
+                'end': meeting.end_time.isoformat(),
+                'description': meeting.description,
+                'is_signed_in': meeting.is_signed_in,
+                'status': meeting.status,
+                'event_type': 'meeting',
+                'backgroundColor': '#3c8dbc', # blue
+                'borderColor': '#3c8dbc'
             })
         
         modified_requests = MeetingRequest.objects.filter(student=request.user.student, status='modified')
@@ -128,7 +138,7 @@ class StudentHomepageView(View):
             'TotalUnits': total_units,
             'TotalLectures': total_lectures,
             'scheduled_lectures': scheduled_lectures_QS,
-            'events': json.dumps(event_data),
+            'events': json.dumps(lecture_events),
             'personal_event_form': StudentPersonalEventForm(),
             'modified_requests': modified_requests,
             'conflicts': conflicts,
@@ -179,9 +189,9 @@ class LecturerCalendarView(View):
 
 @login_required(login_url='login')
 def get_personal_events(request):
+    event_data = []
     if request.user.is_student:
         events = StudentPersonalEvent.objects.filter(student=request.user.student)
-        event_data = []
         for event in events:
             event_data.append({
                 'id': event.id,
@@ -189,49 +199,92 @@ def get_personal_events(request):
                 'start': event.start_date.isoformat(),
                 'end': event.end_date.isoformat(),
                 'description': event.description,
+                'is_signed_in': event.is_signed_in,
+                'status': event.status,
                 'backgroundColor': '#00a65a', # green
                 'borderColor': '#00a65a' # green
             })
-        return JsonResponse(event_data, safe=False)
-    return JsonResponse([], safe=False)
+    elif hasattr(request.user, 'faculty'):
+        events = FacultyPersonalEvent.objects.filter(faculty=request.user.faculty)
+        for event in events:
+            event_data.append({
+                'id': event.id,
+                'title': event.title,
+                'start': event.start_date.isoformat(),
+                'end': event.end_date.isoformat(),
+                'description': event.description,
+                'is_signed_in': event.is_signed_in,
+                'status': event.status,
+                'backgroundColor': '#00a65a', # green
+                'borderColor': '#00a65a' # green
+            })
+    return JsonResponse(event_data, safe=False)
 
 @login_required(login_url='login')
 def add_personal_event(request):
-    if request.method == 'POST' and request.user.is_student:
-        form = StudentPersonalEventForm(request.POST, student_instance=request.user.student)
-        if form.is_valid():
-            event = form.save(commit=False)
-            event.student = request.user.student
-            event.save()
-            return JsonResponse({'status': 'success', 'event_id': event.id})
-        else:
-            return JsonResponse({'status': 'error', 'errors': form.errors})
+    if request.method == 'POST':
+        if request.user.is_student:
+            form = StudentPersonalEventForm(request.POST, student_instance=request.user.student)
+            form.instance.student = request.user.student
+            if form.is_valid():
+                form.save()
+                return JsonResponse({'status': 'success', 'event_id': form.instance.id})
+            else:
+                return JsonResponse({'status': 'error', 'errors': form.errors})
+        elif hasattr(request.user, 'faculty'):
+            form = FacultyPersonalEventForm(request.POST, faculty_instance=request.user.faculty)
+            form.instance.faculty = request.user.faculty
+            if form.is_valid():
+                form.save()
+                return JsonResponse({'status': 'success', 'event_id': form.instance.id})
+            else:
+                return JsonResponse({'status': 'error', 'errors': form.errors})
     return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
 @login_required(login_url='login')
 def update_personal_event(request, event_id):
-    if request.method == 'POST' and request.user.is_student:
-        try:
-            event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
-            form = StudentPersonalEventForm(request.POST, instance=event, student_instance=request.user.student)
-            if form.is_valid():
-                form.save()
-                return JsonResponse({'status': 'success'})
-            else:
-                return JsonResponse({'status': 'error', 'errors': form.errors})
-        except StudentPersonalEvent.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': 'Event not found.'})
+    if request.method == 'POST':
+        if request.user.is_student:
+            try:
+                event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
+                form = StudentPersonalEventForm(request.POST, instance=event, student_instance=request.user.student)
+                if form.is_valid():
+                    form.save()
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'status': 'error', 'errors': form.errors})
+            except StudentPersonalEvent.DoesNotExist:
+                return JsonResponse({'status': 'error', 'message': 'Event not found.'})
+        elif hasattr(request.user, 'faculty'):
+            try:
+                event = FacultyPersonalEvent.objects.get(id=event_id, faculty=request.user.faculty)
+                form = FacultyPersonalEventForm(request.POST, instance=event, faculty_instance=request.user.faculty)
+                if form.is_valid():
+                    form.save()
+                    return JsonResponse({'status': 'success'})
+                else:
+                    return JsonResponse({'status': 'error', 'errors': form.errors})
+            except FacultyPersonalEvent.DoesNotExist:
+                return JsonResponse({'status': 'error', 'message': 'Event not found.'})
     return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
 @login_required(login_url='login')
 def delete_personal_event(request, event_id):
-    if request.method == 'POST' and request.user.is_student:
-        try:
-            event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
-            event.delete()
-            return JsonResponse({'status': 'success'})
-        except StudentPersonalEvent.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': 'Event not found.'})
+    if request.method == 'POST':
+        if request.user.is_student:
+            try:
+                event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
+                event.delete()
+                return JsonResponse({'status': 'success'})
+            except StudentPersonalEvent.DoesNotExist:
+                return JsonResponse({'status': 'error', 'message': 'Event not found.'})
+        elif hasattr(request.user, 'faculty'):
+            try:
+                event = FacultyPersonalEvent.objects.get(id=event_id, faculty=request.user.faculty)
+                event.delete()
+                return JsonResponse({'status': 'success'})
+            except FacultyPersonalEvent.DoesNotExist:
+                return JsonResponse({'status': 'error', 'message': 'Event not found.'})
     return JsonResponse({'status': 'error', 'message': 'Invalid request'})
 
 
@@ -260,6 +313,9 @@ class StudentsUnitsRegistrationView(View):
     template_name = 'dashboard/students/register-units.html'
 
     def get(self, request, student_id, *args, **kwargs):
+        # Data cleanup: Remove any registration records with empty IDs that cause template errors
+        RegisteredUnit.objects.filter(id='', student=request.user.student).delete()
+        
         units_QS = BookedUnit.objects.filter(
             lecturer__department=request.user.student.department,
             students_course=request.user.student.course,
@@ -285,17 +341,30 @@ class StudentsUnitsRegistrationView(View):
                 return redirect('unit_registration', student_id)
             
             else:
-                register_unit = RegisteredUnit.objects.get_or_create(    
+                register_unit, created = RegisteredUnit.objects.get_or_create(    
                     unit=unit_obj,
                     student=request.user.student,
-                    is_registered=True,
+                    defaults={'is_registered': True}
                 )
 
-                messages.success(request, 'Unit successfully registered!')
+                if not created:
+                    messages.warning(request, 'Selected unit already registered!')
+                else:
+                    messages.success(request, 'Unit successfully registered!')
                 return redirect('unit_registration', student_id)
         except RegisteredUnit.DoesNotExist:
             messages.error(request, 'Unknown error occured! Contact system administrator')
             return redirect('unit_registration', student_id)
+
+@login_required(login_url='login')
+def unregister_unit(request, student_id, unit_id):
+    try:
+        reg_unit = RegisteredUnit.objects.get(id=unit_id, student=request.user.student)
+        reg_unit.delete()
+        messages.success(request, 'Unit successfully unregistered!')
+    except RegisteredUnit.DoesNotExist:
+        messages.error(request, 'Unit record not found!')
+    return redirect('unit_registration', student_id)
 
 @method_decorator(login_required(login_url='login'), name='get')
 @method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
@@ -340,6 +409,7 @@ class LectureAttendanceConfirmationView(View):
             confirmation = form.save(commit=False)
             confirmation.student = request.user.student
             confirmation.total_students += 1
+            confirmation.status = 'completed'
             confirmation.save()
 
             # check for lectures before current date
@@ -376,7 +446,31 @@ class StudentsLecturesDetailView(View):
             'lecture_hall'
         ).order_by('lecture_date', 'start_time', 'unit_name__course__name')
 
-        context = {'scheduled_lectures': lectures_QS}
+        available_rooms = ['A110', 'A111', 'A112', 'B110', 'B111', 'B112']
+        allocated_rooms = {} # (date, start_time, end_time) -> set of rooms
+
+        lectures_list = list(lectures_QS) # To be able to modify items
+
+        for lecture in lectures_list:
+            if not lecture.lecture_hall:
+                timeslot = (lecture.lecture_date, lecture.start_time, lecture.end_time)
+                
+                if timeslot not in allocated_rooms:
+                    allocated_rooms[timeslot] = set()
+
+                used_rooms = allocated_rooms[timeslot]
+                
+                available_for_slot = [room for room in available_rooms if room not in used_rooms]
+
+                if available_for_slot:
+                    assigned_room = random.choice(available_for_slot)
+                    lecture.assigned_room = assigned_room
+                    allocated_rooms[timeslot].add(assigned_room)
+                else:
+                    # This case happens if more lectures are in a timeslot than available rooms
+                    lecture.assigned_room = "No room available"
+
+        context = {'scheduled_lectures': lectures_list}
         return render(request, self.template_name, context)
 
 @method_decorator(login_required(login_url='login'), name='get')
@@ -433,36 +527,25 @@ class FacultyDashboardView(View):
                 get_lecture.is_taught = True    # if the lecture's "is_taught" is False change it to True.
                 get_lecture.save()
         
-        # Get all lectures for the calendar view
+        # Get all lectures for the calendar view - ONLY LECTURES
         all_lectures = Lecture.objects.filter(lecturer=request.user.faculty)
-        personal_events = FacultyPersonalEvent.objects.filter(faculty=request.user.faculty)
-
-        event_data = []
+        
+        lecture_events = []
         for event in all_lectures:
-            event_data.append({
+            lecture_events.append({
                 'title': str(event.unit_name.course.name),
                 'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                 'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
                 'backgroundColor': '#f56954', # red
-                'borderColor': '#f56954',
-                'lecturer_id': event.lecturer.id, # Debugging: Add lecturer ID
-                'lecturer_name': str(event.lecturer) # Debugging: Add lecturer name
-            })
-
-        for event in personal_events:
-            event_data.append({
-                'title': event.title,
-                'start': event.start_date.isoformat(),
-                'end': event.end_date.isoformat(),
-                'backgroundColor': '#00a65a', # green
-                'borderColor': '#00a65a'
+                'borderColor': '#f56954'
             })
 
         context = {
             'TotalBookedUnits': total_booked_units,
             'scheduled_lectures': scheduled_lectures_QS,
-            'events': json.dumps(event_data),
+            'events': json.dumps(lecture_events),
             'pending_requests_count': pending_requests_count,
+            'personal_event_form': FacultyPersonalEventForm(),
         }
         return render(request, self.template_name, context)
 
@@ -682,28 +765,60 @@ class LecturesDetailView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: not user.is_student), name='get')
 class ViewUnitStudentsView(View):
     template_name = 'dashboard/faculty/unit_students.html'
 
     def get(self, request, unit_id, *args, **kwargs):
         try:
             unit = BookedUnit.objects.get(id=unit_id)
-            # Ensure the lecturer accessing this page is the one assigned to the unit
-            if unit.lecturer != request.user.faculty:
-                messages.error(request, "You are not authorized to view students for this unit.")
-                return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
+            # Ensure the lecturer accessing this page is the one assigned to the unit or the user is an admin
+            if not request.user.is_staff and not request.user.is_superuser:
+                if unit.lecturer != request.user.faculty:
+                    messages.error(request, "You are not authorized to view students for this unit.")
+                    return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
 
             registered_students = RegisteredUnit.objects.filter(unit=unit).select_related('student__student_name')
-            
+            lectures_for_unit = Lecture.objects.filter(unit_name=unit).order_by('lecture_date', 'start_time')
+
+            lecture_events = []
+            seen_lectures = set()
+            for lecture in lectures_for_unit:
+                event_tuple = (lecture.lecture_date, lecture.start_time)
+                if event_tuple not in seen_lectures:
+                    lecture_events.append(lecture)
+                    seen_lectures.add(event_tuple)
+
+            attendance_data = []
+            for reg_unit in registered_students:
+                student = reg_unit.student
+                student_attendance = {
+                    'student': student,
+                    'attendance': []
+                }
+                for lecture_event in lecture_events:
+                    attended = Lecture.objects.filter(
+                        unit_name=unit,
+                        lecture_date=lecture_event.lecture_date,
+                        start_time=lecture_event.start_time,
+                        student=student,
+                        is_attending=True
+                    ).exists()
+                    student_attendance['attendance'].append(attended)
+                attendance_data.append(student_attendance)
+
             context = {
                 'unit': unit,
-                'students': registered_students
+                'attendance_data': attendance_data,
+                'lecture_events': lecture_events,
             }
             return render(request, self.template_name, context)
         except BookedUnit.DoesNotExist:
             messages.error(request, "The selected unit does not exist.")
-            return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
+            if not request.user.is_staff and not request.user.is_superuser:
+                return redirect('view_faculty_lectures', staff_id=request.user.faculty.id, staff_name=request.user.faculty)
+            else:
+                return redirect('admin_dashboard') # Or some other admin page
 
 
 @method_decorator(login_required(login_url='login'), name='get')
@@ -1005,3 +1120,32 @@ def unread_notifications_api(request):
         'count': unread_notifications.count(),
         'notifications': notifications_data
     })
+
+
+@login_required(login_url='login')
+def sign_in_to_event(request, event_type, event_id):
+    if request.method == 'POST':
+        try:
+            if event_type == 'personal':
+                if request.user.is_student:
+                    event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
+                else:
+                    event = FacultyPersonalEvent.objects.get(id=event_id, faculty=request.user.faculty)
+                event.is_signed_in = True
+                event.save()
+            elif event_type == 'meeting':
+                if request.user.is_student:
+                    event = MeetingRequest.objects.get(id=event_id, student=request.user.student)
+                else:
+                    event = MeetingRequest.objects.get(id=event_id, lecturer=request.user.faculty)
+                event.is_signed_in = True
+                event.save()
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Invalid event type'}, status=400)
+            
+            return JsonResponse({'status': 'success'})
+        except (StudentPersonalEvent.DoesNotExist, FacultyPersonalEvent.DoesNotExist, MeetingRequest.DoesNotExist):
+            return JsonResponse({'status': 'error', 'message': 'Event not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)

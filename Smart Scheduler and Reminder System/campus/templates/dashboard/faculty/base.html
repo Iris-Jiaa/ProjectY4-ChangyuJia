@@ -122,8 +122,7 @@
                     <i class="bi-person-video3"></i><span>Assign units</span>
                 </a>
             </li>
-            {% endif %}
-            <li class="nav-item">
+            {% endif %}            <li class="nav-item">
                 <a class="nav-link" href="{% url 'schedule_lecture_list' staff_id=request.user.faculty.id staff_name=request.user.faculty %}">
                     <i class="bi-alarm-fill"></i><span>Schedule lecture</span>
                 </a>

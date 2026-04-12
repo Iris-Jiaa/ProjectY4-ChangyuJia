@@ -296,79 +296,146 @@ class StudentPersonalEventForm(forms.ModelForm):
         model = StudentPersonalEvent
         fields = ['title', 'description', 'start_date', 'end_date']
 
+    def __init__(self, *args, **kwargs):
+        self.student_instance = kwargs.pop('student_instance', None)
+        super().__init__(*args, **kwargs)
+
     def clean(self):
         cleaned_data = super().clean()
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
         
         # Ensure student instance is available from the request or form initialization
-        student = getattr(self, 'student_instance', None)
+        student = self.student_instance
         if not student and self.instance.pk: # If updating, get student from existing instance
             student = self.instance.student
         
         if not student:
             raise forms.ValidationError("Student information is missing for conflict check.")
 
-        # Create a temporary EventItem for the proposed personal event
-        proposed_event_item = EventItem(
-            obj_id=self.instance.pk if self.instance.pk else None, # Include PK if it's an update
-            title=cleaned_data.get('title'),
-            start_datetime=start_date,
-            end_datetime=end_date,
-            location=None,
-            event_type='personal_event'
-        )
+        if start_date and end_date:
+            if start_date >= end_date:
+                raise forms.ValidationError("End date must be after start date.")
 
-        # Fetch all existing events for the student, excluding the current event if it's an update
-        all_existing_events = []
+            # Check for overlapping personal events for the same student
+            conflicting_personal_events = StudentPersonalEvent.objects.filter(
+                student=student,
+                start_date__lt=end_date,
+                end_date__gt=start_date
+            )
+            if self.instance and self.instance.pk:
+                conflicting_personal_events = conflicting_personal_events.exclude(pk=self.instance.pk)
 
-        # Get existing lectures
-        registered_units = RegisteredUnit.objects.filter(student=student)
-        lectures_qs = Lecture.objects.filter(
-            unit_name__in=registered_units.values('unit')
-        ).select_related('lecturer__staff', 'unit_name__course', 'lecture_hall')
+            if conflicting_personal_events.exists():
+                raise forms.ValidationError(
+                    "You have another personal event scheduled at this time."
+                )
+
+            # Check for overlapping lectures for the same student
+            conflicting_lectures = Lecture.objects.filter(
+                unit_name__registeredunit__student=student,
+                lecture_date=start_date.date(),
+                start_time__lt=end_date.time(),
+                end_time__gt=start_date.time()
+            )
+
+            if conflicting_lectures.exists():
+                raise forms.ValidationError(
+                    "You have a lecture scheduled at this time."
+                )
+
+            # Check for overlapping meetings for the same student
+            conflicting_meetings = MeetingRequest.objects.filter(
+                student=student,
+                start_time__lt=end_date,
+                end_time__gt=start_date,
+                status='approved'
+            )
+
+            if conflicting_meetings.exists():
+                raise forms.ValidationError(
+                    "You have an approved meeting scheduled at this time."
+                )
+
+        return cleaned_data
+
+class FacultyPersonalEventForm(forms.ModelForm):
+    title = forms.CharField(widget=forms.TextInput(attrs={
+        'type': 'text', 'class': 'form-control', 'placeholder': 'Event Title'
+    }))
+    description = forms.CharField(widget=forms.Textarea(attrs={
+        'type': 'text', 'class': 'form-control', 'rows': 3, 'placeholder': 'Event Description (Optional)'
+    }), required=False)
+    start_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
+        'type': 'datetime-local', 'class': 'form-control'
+    }))
+    end_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
+        'type': 'datetime-local', 'class': 'form-control'
+    }))
+
+    class Meta:
+        model = FacultyPersonalEvent
+        fields = ['title', 'description', 'start_date', 'end_date']
+
+    def __init__(self, *args, **kwargs):
+        self.faculty_instance = kwargs.pop('faculty_instance', None)
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_date = cleaned_data.get('start_date')
+        end_date = cleaned_data.get('end_date')
         
-        for lecture in lectures_qs:
-            all_existing_events.append(EventItem(
-                obj_id=lecture.id,
-                title=f"{lecture.unit_name.course.name} ({lecture.lecturer.staff.first_name} {lecture.lecturer.staff.last_name})",
-                start_datetime=datetime.combine(lecture.lecture_date, lecture.start_time),
-                end_datetime=datetime.combine(lecture.lecture_date, lecture.end_time),
-                location=lecture.lecture_hall.hall_no if lecture.lecture_hall else None,
-                event_type='lecture'
-            ))
-
-        # Get existing personal events, excluding the one being edited
-        personal_events_qs = StudentPersonalEvent.objects.filter(student=student)
-        if self.instance.pk:
-            personal_events_qs = personal_events_qs.exclude(pk=self.instance.pk)
-
-        for personal_event in personal_events_qs:
-            all_existing_events.append(EventItem(
-                obj_id=personal_event.id,
-                title=personal_event.title,
-                start_datetime=personal_event.start_date,
-                end_datetime=personal_event.end_date,
-                location=None,
-                event_type='personal_event'
-            ))
+        faculty = self.faculty_instance
+        if not faculty and self.instance.pk:
+            faculty = self.instance.faculty
         
-        # Now, check the proposed event against all_existing_events
-        potential_conflicts = []
-        for existing_event in all_existing_events:
-            # Check for time overlap
-            if proposed_event_item.start_datetime < existing_event.end_datetime and existing_event.start_datetime < proposed_event_item.end_datetime:
-                # Time conflict detected
-                conflict_desc = f"Time overlap with existing {existing_event.event_type.replace('_', ' ')}: '{existing_event.title}' from {existing_event.start_datetime.strftime('%H:%M')} to {existing_event.end_datetime.strftime('%H:%M')}."
-                
-                # Check for location conflict if both have locations and are different
-                if proposed_event_item.location and existing_event.location and proposed_event_item.location != existing_event.location:
-                    conflict_desc += f" Also, conflicting locations: proposed at '{proposed_event_item.location}' vs existing at '{existing_event.location}'."
-                
-                potential_conflicts.append(conflict_desc)
-        
-        if potential_conflicts:
-            raise forms.ValidationError(potential_conflicts)
+        if not faculty:
+            raise forms.ValidationError("Faculty information is missing for conflict check.")
+
+        if start_date and end_date:
+            if start_date >= end_date:
+                raise forms.ValidationError("End date must be after start date.")
+
+            # Check for overlapping personal events for the same faculty
+            conflicting_personal_events = FacultyPersonalEvent.objects.filter(
+                faculty=faculty,
+                start_date__lt=end_date,
+                end_date__gt=start_date
+            )
+            if self.instance and self.instance.pk:
+                conflicting_personal_events = conflicting_personal_events.exclude(pk=self.instance.pk)
+
+            if conflicting_personal_events.exists():
+                raise forms.ValidationError(
+                    "You have another personal event scheduled at this time."
+                )
+
+            # Check for overlapping lectures for the same faculty
+            conflicting_lectures = Lecture.objects.filter(
+                lecturer=faculty,
+                lecture_date=start_date.date(),
+                start_time__lt=end_date.time(),
+                end_time__gt=start_date.time()
+            )
+
+            if conflicting_lectures.exists():
+                raise forms.ValidationError(
+                    "You have a lecture scheduled at this time."
+                )
+
+            # Check for overlapping meetings for the same faculty
+            conflicting_meetings = MeetingRequest.objects.filter(
+                lecturer=faculty,
+                start_time__lt=end_date,
+                end_time__gt=start_date,
+                status='approved'
+            )
+
+            if conflicting_meetings.exists():
+                raise forms.ValidationError(
+                    "You have an approved meeting scheduled at this time."
+                )
 
         return cleaned_data
 

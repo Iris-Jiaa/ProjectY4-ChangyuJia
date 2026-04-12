@@ -35,8 +35,10 @@
 												<td>{{ lecture.start_time|date:"H:i A" }} - {{ lecture.end_time|date:"H:i A" }}</td>
                                                 <td>{{ lecture.recurrence_pattern }}</td>
 												<td class="text-center">
-													{% if not lecture.lecture_hall is None %}
-													{{ lecture.lecture_hall|default:"--" }}
+													{% if lecture.assigned_room %}
+														{{ lecture.assigned_room }}
+													{% elif lecture.lecture_hall %}
+														{{ lecture.lecture_hall }}
 													{% else %}
 													<span class="badge bg-primary py-2">
 														<span class="spinner-border spinner-border-sm"></span> Room allocation pending
