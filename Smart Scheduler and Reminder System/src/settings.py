@@ -145,6 +145,7 @@ MESSAGE_TAGS = {
     messages.ERROR: 'danger',
 }
 
+LOGIN_URL = 'login'
 LOGOUT_REDIRECT_URL = 'login'
 
 if not DEBUG:
