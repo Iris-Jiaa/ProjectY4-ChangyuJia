@@ -6,7 +6,7 @@ import uuid
 
 class CampusLogicTests(TestCase):
     def setUp(self):
-        # 1. 创建教师
+        # 1. Create lecturer
         self.u_teacher = User.objects.create_user(
             username='teacher1', 
             email='t1@test.com',
@@ -24,7 +24,7 @@ class CampusLogicTests(TestCase):
             position='Lecturer'
         )
         
-        # 2. 创建学生
+        # 2. Create student
         self.u_student = User.objects.create_user(
             username='student1', 
             email='s1@test.com',
@@ -46,11 +46,11 @@ class CampusLogicTests(TestCase):
             course='CS'
         )
         
-        # 3. 创建课程
+        # 3. Create course
         self.course = Course.objects.create(name='Software Engineering', code='CS301')
 
     def test_course_booking(self):
-        """测试教师预约课程单元"""
+        """Test that a lecturer can book a course unit."""
         booked = BookedUnit.objects.create(
             lecturer=self.faculty,
             course=self.course,
@@ -61,7 +61,7 @@ class CampusLogicTests(TestCase):
         self.assertEqual(booked.course.name, 'Software Engineering')
 
     def test_meeting_request_workflow(self):
-        """测试学生向教师发起会议请求并修改状态"""
+        """Test that a student can create a meeting request and the status can be updated."""
         start = timezone.now() + timezone.timedelta(days=1)
         end = start + timezone.timedelta(hours=1)
         
@@ -76,13 +76,13 @@ class CampusLogicTests(TestCase):
         
         self.assertEqual(meeting.status, 'pending')
         
-        # 模拟教师批准
+        # Simulate lecturer approval
         meeting.status = 'approved'
         meeting.save()
         self.assertEqual(MeetingRequest.objects.get(id=meeting.id).status, 'approved')
 
     def test_faculty_personal_event(self):
-        """测试教职员工个人事件的创建"""
+        """Test that a faculty personal event can be created."""
         event = FacultyPersonalEvent.objects.create(
             faculty=self.faculty,
             title='Research Seminar',
@@ -101,16 +101,16 @@ class ConflictDetectionTests(TestCase):
         self.faculty = Faculty.objects.create(staff=self.u_teacher, school='SCI', department='CS', position='Lecturer')
 
     def test_personal_event_time_conflict(self):
-        """验证同一教师在重叠时间内创建事件会失败"""
+        """Verify that creating an overlapping event for the same lecturer raises a ValidationError."""
         start = timezone.now()
         end = start + timezone.timedelta(hours=2)
 
-        # 第一个事件
+        # First event
         FacultyPersonalEvent.objects.create(
             faculty=self.faculty, title='Event 1', start_date=start, end_date=end
         )
 
-        # 第二个重叠事件
+        # Second overlapping event
         overlapping_event = FacultyPersonalEvent(
             faculty=self.faculty, title='Event 2', 
             start_date=start + timezone.timedelta(hours=1), 
@@ -244,8 +244,8 @@ class PersonalReportTests(TestCase):
         """Verify the personal report view returns 200 for a logged-in student"""
         login_success = self.client.login(email='rs@test.com', password='password123')
         self.assertTrue(login_success)
-        # Use the full URL including /campus/u/ prefix as seen in src/urls.py
-        response = self.client.get('/campus/u/personal-report/')
+        # Use the full URL including /campus/ prefix as seen in src/urls.py
+        response = self.client.get('/campus/personal-report/')
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/reports.html')
 
@@ -268,7 +268,7 @@ class PersonalReportTests(TestCase):
         
         login_success = self.client.login(email='rs@test.com', password='password123')
         self.assertTrue(login_success)
-        response = self.client.get('/campus/u/personal-report/')
+        response = self.client.get('/campus/personal-report/')
         
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['personal_stats']['completed'], 1)
@@ -300,7 +300,7 @@ class AdminCourseViewTests(TestCase):
     def test_admin_can_view_all_courses(self):
         """Verify admin can access the all-courses list"""
         self.client.login(email='admin@test.com', password='password123')
-        response = self.client.get('/campus/u/admin-dashboard/all-courses/')
+        response = self.client.get('/campus/admin-dashboard/all-courses/')
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/admin/all_courses.html')
         self.assertContains(response, 'Reporting 101')
@@ -308,7 +308,7 @@ class AdminCourseViewTests(TestCase):
     def test_admin_can_view_unit_students(self):
         """Verify admin can access student list for any unit"""
         self.client.login(email='admin@test.com', password='password123')
-        response = self.client.get(f'/campus/u/unit/{self.booked_unit.id}/students/')
+        response = self.client.get(f'/campus/unit/{self.booked_unit.id}/students/')
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'dashboard/faculty/unit_students.html')
 

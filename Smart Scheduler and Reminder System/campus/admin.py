@@ -1,4 +1,4 @@
-from .models import BookedUnit, Feedback, Lecture, LectureHall, RegisteredUnit, Course
+from .models import BookedUnit, EventComment, Feedback, Holiday, Lecture, LectureHall, RegisteredUnit, Course
 from django.contrib import admin
 
 @admin.register(Course)
@@ -30,3 +30,16 @@ class LectureHallsRecords(admin.ModelAdmin):
 class StudentsFeedbackTable(admin.ModelAdmin):
     list_display = ['lecture_hall', 'rate_score', 'date_posted']
     readonly_fields = ['lecture_hall', 'complaint', 'description', 'rate_score']
+
+@admin.register(Holiday)
+class HolidayAdmin(admin.ModelAdmin):
+    list_display = ['name', 'start_date', 'end_date']
+    search_fields = ['name']
+    list_filter = ['start_date']
+
+@admin.register(EventComment)
+class EventCommentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'author', 'is_pinned', 'date_created', 'content_type', 'object_id']
+    list_filter = ['is_pinned', 'content_type']
+    search_fields = ['author__username', 'content']
+    readonly_fields = ['id', 'author', 'date_created', 'content_type', 'object_id']

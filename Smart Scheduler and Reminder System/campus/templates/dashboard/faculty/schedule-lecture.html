@@ -61,5 +61,56 @@
             </div>
         </div>
     </section>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            function toggleRecurrenceFields(form) {
+                const patternField = form.querySelector('[name="recurrence_pattern"]');
+                const endTypeField = form.querySelector('[name="recurrence_end_type"]');
+                const countField = form.querySelector('[name="recurrence_count"]');
+                const endDateField = form.querySelector('[name="recurrence_end_date"]');
+
+                if (!patternField) return;
+
+                const pattern = patternField.value;
+                const endTypeRow = endTypeField.closest('.mb-3');
+                const countRow = countField.closest('.mb-3');
+                const endDateRow = endDateField.closest('.mb-3');
+
+                if (pattern === 'none') {
+                    endTypeRow.style.display = 'none';
+                    countRow.style.display = 'none';
+                    endDateRow.style.display = 'none';
+                } else {
+                    endTypeRow.style.display = 'block';
+                    const endType = endTypeField.value;
+                    if (endType === 'count') {
+                        countRow.style.display = 'block';
+                        endDateRow.style.display = 'none';
+                    } else if (endType === 'date') {
+                        countRow.style.display = 'none';
+                        endDateRow.style.display = 'block';
+                    } else {
+                        countRow.style.display = 'none';
+                        endDateRow.style.display = 'none';
+                    }
+                }
+            }
+
+            const forms = document.querySelectorAll('form');
+            forms.forEach(form => {
+                const patternField = form.querySelector('[name="recurrence_pattern"]');
+                const endTypeField = form.querySelector('[name="recurrence_end_type"]');
+                
+                if (patternField) {
+                    patternField.addEventListener('change', () => toggleRecurrenceFields(form));
+                }
+                if (endTypeField) {
+                    endTypeField.addEventListener('change', () => toggleRecurrenceFields(form));
+                }
+                toggleRecurrenceFields(form); // Initial call
+            });
+        });
+    </script>
 </main>
 {% endblock %}

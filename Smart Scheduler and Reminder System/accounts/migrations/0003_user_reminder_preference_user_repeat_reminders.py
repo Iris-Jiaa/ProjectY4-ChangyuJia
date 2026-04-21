@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='user',
             name='reminder_preference',
-            field=models.CharField(choices=[('instant', '即时提醒 (Instant)'), ('15min', '提前15分钟 (15 minutes before)'), ('30min', '提前30分钟 (30 minutes before)')], default='instant', max_length=10, verbose_name='提醒偏好'),
+            field=models.CharField(choices=[('instant', 'Instant'), ('15min', '15 minutes before'), ('30min', '30 minutes before')], default='instant', max_length=10, verbose_name='Reminder Preference'),
         ),
         migrations.AddField(
             model_name='user',
             name='repeat_reminders',
-            field=models.BooleanField(default=False, verbose_name='重复提醒'),
+            field=models.BooleanField(default=False, verbose_name='Repeat Reminders'),
         ),
     ]

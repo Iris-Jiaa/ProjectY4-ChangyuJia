@@ -7,17 +7,17 @@ from django.http import JsonResponse
 from django.contrib import messages
 from django.db.models import Avg, Q
 from django.views import View
-from .models import BookedUnit, Course, Feedback, Lecture, LectureHall, RegisteredUnit, StudentPersonalEvent, MeetingRequest, FacultyPersonalEvent, Notification
+from .models import BookedUnit, Course, EventComment, Feedback, Holiday, Lecture, LectureHall, RegisteredUnit, StudentPersonalEvent, MeetingRequest, FacultyPersonalEvent, Notification
 from django.contrib.contenttypes.models import ContentType
 from datetime import time, datetime as dt, timedelta
 import json
 import random
 from django.utils import timezone # Added for IntegrityError fix
-from .utils import check_student_conflicts # Import the conflict detection utility
+from .utils import check_student_conflicts, create_recurring_instances # Import the conflict detection and recurrence utility
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_admin), name='get')
 class AdminDashboardView(View):
     template_name = 'dashboard/admin/homepage.html'
 
@@ -39,12 +39,12 @@ class AdminDashboardView(View):
 
 # new view for admin to list all students
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_admin), name='get')
 class AdminAllStudentsView(View):
     template_name = 'dashboard/admin/all_students.html'
 
     def get(self, request, *args, **kwargs):
-        all_students = Student.objects.all().select_related('student_name').order_by('student_name__last_name', 'student_name__first_name')
+        all_students = Student.objects.all().select_related('student_name').exclude(id='').order_by('student_name__last_name', 'student_name__first_name')
         
         context = {
             'all_students': all_students,
@@ -53,17 +53,67 @@ class AdminAllStudentsView(View):
 
 # new view for admin to list all courses/units
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: user.is_staff or user.is_superuser), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_admin), name='get')
 class AdminAllCoursesView(View):
     template_name = 'dashboard/admin/all_courses.html'
 
     def get(self, request, *args, **kwargs):
-        all_units = BookedUnit.objects.all().select_related('lecturer__staff', 'course').order_by('course__name')
-        
+        all_units = BookedUnit.objects.all().select_related('lecturer__staff', 'course').exclude(id='').order_by('course__name')
+
         context = {
             'all_units': all_units,
         }
         return render(request, self.template_name, context)
+
+
+@method_decorator(login_required(login_url='login'), name='dispatch')
+@method_decorator(user_passes_test(lambda user: user.is_admin), name='dispatch')
+class AdminHolidayView(View):
+    """Admin view for managing holiday / exam-week periods."""
+    template_name = 'dashboard/admin/holidays.html'
+
+    def get(self, request, *args, **kwargs):
+        holidays = Holiday.objects.all().order_by('start_date')
+        context = {'holidays': holidays}
+        return render(request, self.template_name, context)
+
+    def post(self, request, *args, **kwargs):
+        name = request.POST.get('name', '').strip()
+        start_date = request.POST.get('start_date', '').strip()
+        end_date = request.POST.get('end_date', '').strip()
+
+        errors = []
+        if not name:
+            errors.append('Holiday name is required.')
+        if not start_date:
+            errors.append('Start date is required.')
+        if not end_date:
+            errors.append('End date is required.')
+        if start_date and end_date and start_date > end_date:
+            errors.append('End date cannot be earlier than start date.')
+
+        if errors:
+            holidays = Holiday.objects.all().order_by('start_date')
+            return render(request, self.template_name, {'holidays': holidays, 'errors': errors, 'form_data': request.POST})
+
+        Holiday.objects.create(name=name, start_date=start_date, end_date=end_date)
+        messages.success(request, f'Holiday "{name}" has been added successfully.')
+        return redirect('admin_holidays')
+
+
+@login_required(login_url='login')
+@user_passes_test(lambda user: user.is_admin)
+def delete_holiday(request, holiday_id):
+    """Delete a holiday record."""
+    if request.method == 'POST':
+        try:
+            holiday = Holiday.objects.get(id=holiday_id)
+            name = holiday.name
+            holiday.delete()
+            messages.success(request, f'Holiday "{name}" has been deleted.')
+        except Holiday.DoesNotExist:
+            messages.error(request, 'Holiday not found.')
+    return redirect('admin_holidays')
 
 
 # students views
@@ -203,10 +253,16 @@ class LecturerCalendarView(View):
 
 @login_required(login_url='login')
 def get_personal_events(request):
+    PRIORITY_COLORS = {
+        'low':    '#28a745',  # green
+        'medium': '#fd7e14',  # orange
+        'high':   '#dc3545',  # red
+    }
     event_data = []
     if request.user.is_student:
         events = StudentPersonalEvent.objects.filter(student=request.user.student)
         for event in events:
+            color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
                 'id': event.id,
                 'title': event.title,
@@ -215,12 +271,14 @@ def get_personal_events(request):
                 'description': event.description,
                 'is_signed_in': event.is_signed_in,
                 'status': event.status,
-                'backgroundColor': '#00a65a', # green
-                'borderColor': '#00a65a' # green
+                'priority': event.priority,
+                'backgroundColor': color,
+                'borderColor': color,
             })
     elif hasattr(request.user, 'faculty'):
         events = FacultyPersonalEvent.objects.filter(faculty=request.user.faculty)
         for event in events:
+            color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
                 'id': event.id,
                 'title': event.title,
@@ -229,10 +287,36 @@ def get_personal_events(request):
                 'description': event.description,
                 'is_signed_in': event.is_signed_in,
                 'status': event.status,
-                'backgroundColor': '#00a65a', # green
-                'borderColor': '#00a65a' # green
+                'priority': event.priority,
+                'backgroundColor': color,
+                'borderColor': color,
             })
     return JsonResponse(event_data, safe=False)
+
+
+@login_required(login_url='login')
+def get_holidays_api(request):
+    """Return all holiday/exam-week ranges as FullCalendar-compatible background events."""
+    holidays_qs = Holiday.objects.all()
+    data = []
+    for h in holidays_qs:
+        # FullCalendar end is exclusive, so add 1 day to include the end date
+        end_exclusive = h.end_date + timedelta(days=1)
+        data.append({
+            'id': h.id,
+            'title': h.name,
+            'start': h.start_date.isoformat(),
+            'end': end_exclusive.isoformat(),
+            'display': 'background',
+            'backgroundColor': '#b0b0b0',
+            'classNames': ['holiday-bg-event'],
+            'extendedProps': {
+                'is_holiday': True,
+                'holiday_name': h.name,
+            }
+        })
+    return JsonResponse(data, safe=False)
+
 
 @login_required(login_url='login')
 def add_personal_event(request):
@@ -241,16 +325,24 @@ def add_personal_event(request):
             form = StudentPersonalEventForm(request.POST, student_instance=request.user.student)
             form.instance.student = request.user.student
             if form.is_valid():
-                form.save()
-                return JsonResponse({'status': 'success', 'event_id': form.instance.id})
+                try:
+                    event = form.save()
+                    create_recurring_instances(event)
+                    return JsonResponse({'status': 'success', 'event_id': event.id})
+                except Exception as e:
+                    return JsonResponse({'status': 'error', 'message': str(e)})
             else:
                 return JsonResponse({'status': 'error', 'errors': form.errors})
         elif hasattr(request.user, 'faculty'):
             form = FacultyPersonalEventForm(request.POST, faculty_instance=request.user.faculty)
             form.instance.faculty = request.user.faculty
             if form.is_valid():
-                form.save()
-                return JsonResponse({'status': 'success', 'event_id': form.instance.id})
+                try:
+                    event = form.save()
+                    create_recurring_instances(event)
+                    return JsonResponse({'status': 'success', 'event_id': event.id})
+                except Exception as e:
+                    return JsonResponse({'status': 'error', 'message': str(e)})
             else:
                 return JsonResponse({'status': 'error', 'errors': form.errors})
     return JsonResponse({'status': 'error', 'message': 'Invalid request'})
@@ -288,14 +380,22 @@ def delete_personal_event(request, event_id):
         if request.user.is_student:
             try:
                 event = StudentPersonalEvent.objects.get(id=event_id, student=request.user.student)
-                event.delete()
+                if event.parent_event_id == event.id:
+                    # Delete all recurring instances
+                    StudentPersonalEvent.objects.filter(parent_event_id=event.id).delete()
+                else:
+                    event.delete()
                 return JsonResponse({'status': 'success'})
             except StudentPersonalEvent.DoesNotExist:
                 return JsonResponse({'status': 'error', 'message': 'Event not found.'})
         elif hasattr(request.user, 'faculty'):
             try:
                 event = FacultyPersonalEvent.objects.get(id=event_id, faculty=request.user.faculty)
-                event.delete()
+                if event.parent_event_id == event.id:
+                    # Delete all recurring instances
+                    FacultyPersonalEvent.objects.filter(parent_event_id=event.id).delete()
+                else:
+                    event.delete()
                 return JsonResponse({'status': 'success'})
             except FacultyPersonalEvent.DoesNotExist:
                 return JsonResponse({'status': 'error', 'message': 'Event not found.'})
@@ -335,7 +435,7 @@ class StudentsUnitsRegistrationView(View):
             students_course=request.user.student.course,
             year_of_study=request.user.student.year,
             semester=request.user.student.semester,
-        )
+        ).exclude(id='')
         reg_units_QS = RegisteredUnit.objects.filter(student=request.user.student)
 
         context = {
@@ -523,13 +623,13 @@ class SubmitFeedbackView(View):
 
 # faculty views
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_faculty), name='get')
 class FacultyDashboardView(View):
     template_name = 'dashboard/faculty/homepage.html'
 
     def get(self, request, *args, **kwargs):
         current_date = dt.now().strftime('%Y-%m-%d')
-        total_booked_units = BookedUnit.objects.filter(lecturer=request.user.faculty).count()
+        total_booked_units = BookedUnit.objects.filter(lecturer=request.user.faculty).exclude(id='').count()
         scheduled_lectures_QS = Lecture.objects.filter(lecturer=request.user.faculty, lecture_date=current_date).order_by('lecture_date', 'start_time')
         pending_requests_count = MeetingRequest.objects.filter(lecturer=request.user.faculty, status='pending').count()
 
@@ -547,11 +647,16 @@ class FacultyDashboardView(View):
         lecture_events = []
         for event in all_lectures:
             lecture_events.append({
+                'id': event.id,
                 'title': str(event.unit_name.course.name),
                 'start': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.start_time.strftime('%H:%M:%S'),
                 'end': event.lecture_date.strftime('%Y-%m-%d') + 'T' + event.end_time.strftime('%H:%M:%S'),
-                'backgroundColor': '#f56954', # red
-                'borderColor': '#f56954'
+                'event_type': 'lecture',
+                'description': '',
+                'status': event.status,
+                'location': event.lecture_hall.name if event.lecture_hall else 'TBA',
+                'backgroundColor': '#f56954',
+                'borderColor': '#f56954',
             })
 
         context = {
@@ -565,54 +670,83 @@ class FacultyDashboardView(View):
 
 @login_required(login_url='login')
 def approve_meeting_request(request, request_id):
+    if request.method != 'POST':
+        return redirect('manage_meeting_requests')
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id)
-        if request.user.faculty == meeting_request.lecturer:
-            meeting_request.status = 'approved'
-            meeting_request.save()
-
-            # Create a personal event for the student
-            StudentPersonalEvent.objects.create(
-                student=meeting_request.student,
-                title=f"Meeting with {meeting_request.lecturer.staff.first_name} {meeting_request.lecturer.staff.last_name}",
-                description=meeting_request.description,
-                start_date=meeting_request.start_time,
-                end_date=meeting_request.end_time,
-            )
-
-            # Create a personal event for the faculty
-            FacultyPersonalEvent.objects.create(
-                faculty=meeting_request.lecturer,
-                title=f"Meeting with {meeting_request.student.student_name}",
-                description=meeting_request.description,
-                start_date=meeting_request.start_time,
-                end_date=meeting_request.end_time,
-            )
-
-            # Create a notification for the student
-            Notification.objects.create(
-                recipient=meeting_request.student.student_name,
-                message=f"Your meeting request with {meeting_request.lecturer.staff.first_name} {meeting_request.lecturer.staff.last_name} has been approved.",
-                content_object=meeting_request
-            )
-
-            messages.success(request, 'Meeting request approved.')
-        else:
+        if request.user.faculty != meeting_request.lecturer:
             messages.error(request, 'You are not authorized to approve this request.')
+            return redirect('manage_meeting_requests')
+
+        remarks = request.POST.get('remarks', '').strip()
+        meeting_request.status = 'approved'
+        meeting_request.lecturer_remarks = remarks or None
+        meeting_request.save()
+
+        # Create a personal event for the student
+        StudentPersonalEvent.objects.create(
+            student=meeting_request.student,
+            title=f"Meeting with {meeting_request.lecturer.staff.first_name} {meeting_request.lecturer.staff.last_name}",
+            description=meeting_request.description,
+            start_date=meeting_request.start_time,
+            end_date=meeting_request.end_time,
+        )
+
+        # Create a personal event for the faculty
+        FacultyPersonalEvent.objects.create(
+            faculty=meeting_request.lecturer,
+            title=f"Meeting with {meeting_request.student.student_name}",
+            description=meeting_request.description,
+            start_date=meeting_request.start_time,
+            end_date=meeting_request.end_time,
+        )
+
+        # Notify student with result and any remarks
+        note_suffix = f' Lecturer note: "{remarks}"' if remarks else ''
+        Notification.objects.create(
+            recipient=meeting_request.student.student_name,
+            message=(
+                f'Your meeting request "{meeting_request.title}" with '
+                f'{meeting_request.lecturer.staff.get_full_name()} has been approved. '
+                f'Time: {meeting_request.start_time.strftime("%d %b %Y %H:%M")} – '
+                f'{meeting_request.end_time.strftime("%H:%M")} at {meeting_request.location}.'
+                f'{note_suffix}'
+            ),
+            content_object=meeting_request,
+        )
+        messages.success(request, 'Meeting request approved and student notified.')
     except MeetingRequest.DoesNotExist:
         messages.error(request, 'Meeting request not found.')
     return redirect('manage_meeting_requests')
 
+
 @login_required(login_url='login')
 def reject_meeting_request(request, request_id):
+    if request.method != 'POST':
+        return redirect('manage_meeting_requests')
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id)
-        if request.user.faculty == meeting_request.lecturer:
-            meeting_request.status = 'rejected'
-            meeting_request.save()
-            messages.success(request, 'Meeting request rejected.')
-        else:
+        if request.user.faculty != meeting_request.lecturer:
             messages.error(request, 'You are not authorized to reject this request.')
+            return redirect('manage_meeting_requests')
+
+        remarks = request.POST.get('remarks', '').strip()
+        meeting_request.status = 'rejected'
+        meeting_request.lecturer_remarks = remarks or None
+        meeting_request.save()
+
+        # Notify student
+        note_suffix = f' Reason: "{remarks}"' if remarks else ''
+        Notification.objects.create(
+            recipient=meeting_request.student.student_name,
+            message=(
+                f'Your meeting request "{meeting_request.title}" with '
+                f'{meeting_request.lecturer.staff.get_full_name()} has been rejected.'
+                f'{note_suffix}'
+            ),
+            content_object=meeting_request,
+        )
+        messages.success(request, 'Meeting request rejected and student notified.')
     except MeetingRequest.DoesNotExist:
         messages.error(request, 'Meeting request not found.')
     return redirect('manage_meeting_requests')
@@ -624,11 +758,58 @@ class ManageMeetingRequestsView(View):
     template_name = 'dashboard/faculty/manage_requests.html'
 
     def get(self, request, *args, **kwargs):
-        pending_requests = MeetingRequest.objects.filter(lecturer=request.user.faculty, status='pending').order_by('start_time')
+        base_qs = MeetingRequest.objects.filter(lecturer=request.user.faculty).order_by('-date_created')
         context = {
-            'requests': pending_requests
+            'pending_requests': base_qs.filter(status='pending'),
+            'approved_requests': base_qs.filter(status='approved'),
+            'rejected_requests': base_qs.filter(status='rejected'),
+            'modified_requests': base_qs.filter(status='modified'),
+            'cancelled_requests': base_qs.filter(status='cancelled'),
         }
         return render(request, self.template_name, context)
+
+
+@method_decorator(login_required(login_url='login'), name='get')
+@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+class StudentMeetingRequestsView(View):
+    """Student view to track all their meeting requests and statuses."""
+    template_name = 'dashboard/students/meeting_requests.html'
+
+    def get(self, request, *args, **kwargs):
+        all_requests = MeetingRequest.objects.filter(
+            student=request.user.student
+        ).order_by('-date_created')
+        context = {'all_requests': all_requests}
+        return render(request, self.template_name, context)
+
+
+@login_required(login_url='login')
+def cancel_meeting_request(request, request_id):
+    """Allow a student to cancel their own pending meeting request."""
+    if request.method != 'POST':
+        return redirect('student_meeting_requests')
+    try:
+        meeting_request = MeetingRequest.objects.get(id=request_id, student=request.user.student)
+        if meeting_request.status not in ('pending', 'modified'):
+            messages.error(request, 'Only pending or modified requests can be cancelled.')
+            return redirect('student_meeting_requests')
+        meeting_request.status = 'cancelled'
+        meeting_request.save()
+
+        # Notify lecturer
+        Notification.objects.create(
+            recipient=meeting_request.lecturer.staff,
+            message=(
+                f'{request.user.get_full_name()} has cancelled their meeting request '
+                f'"{meeting_request.title}" scheduled for '
+                f'{meeting_request.start_time.strftime("%d %b %Y %H:%M")}.'
+            ),
+            content_object=meeting_request,
+        )
+        messages.success(request, 'Meeting request cancelled.')
+    except MeetingRequest.DoesNotExist:
+        messages.error(request, 'Meeting request not found.')
+    return redirect('student_meeting_requests')
 
 
 @method_decorator(user_passes_test(lambda user: hasattr(user, 'faculty')), name='dispatch')
@@ -665,10 +846,13 @@ class ScheduleLectureView(View):
             new_scheduled_lecture.date_scheduled = timezone.now() # Explicitly set date_scheduled
             new_scheduled_lecture.save()
 
+            # Create recurring instances
+            create_recurring_instances(new_scheduled_lecture)
+
             # Create a notification for the lecturer
             Notification.objects.create(
                 recipient=request.user,
-                message=f"You have successfully scheduled a lecture for {new_scheduled_lecture.unit_name} on {new_scheduled_lecture.lecture_date} at {new_scheduled_lecture.start_time}.",
+                message=f"You have successfully scheduled a lecture (and recurrences if any) for {new_scheduled_lecture.unit_name} starting {new_scheduled_lecture.lecture_date} at {new_scheduled_lecture.start_time}.",
                 content_object=new_scheduled_lecture
             )
 
@@ -677,7 +861,7 @@ class ScheduleLectureView(View):
         else:
             messages.warning(request, 'The form has errors. Please correct them and try again.')
             
-            booked_units_QS = BookedUnit.objects.filter(lecturer=staff_id)
+            booked_units_QS = BookedUnit.objects.filter(lecturer=staff_id).exclude(id='')
             forms_by_unit = {}
             for unit in booked_units_QS:
                 if str(unit.id) == unit_id:
@@ -1075,11 +1259,7 @@ def view_all_notifications(request):
 def mark_all_notifications_as_read(request):
     if request.method == 'POST':
         try:
-            # Mark all unread notifications for the current user as read
-            notifications = Notification.objects.filter(recipient=request.user, is_read=False)
-            for notification in notifications:
-                notification.is_read = True
-                notification.save()
+            Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
             return JsonResponse({'status': 'success'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
@@ -1104,15 +1284,12 @@ def get_unread_notifications(request):
     data = []
     for n in notifications:
         item = {
+            'id': n.id,
             'message': n.message,
-            'url': n.content_object.get_absolute_url() if n.content_object and hasattr(n.content_object, 'get_absolute_url') else '#',
-            'notification_type': n.notification_type, # Include notification type
             'is_event_reminder': False,
             'event_start_time': None,
             'event_title': None,
         }
-        
-        # Check if the notification is for a Lecture or MeetingRequest
         if n.content_object:
             if isinstance(n.content_object, Lecture):
                 item['is_event_reminder'] = True
@@ -1262,3 +1439,154 @@ def personal_report(request):
         })
 
     return render(request, 'dashboard/reports.html', context)
+
+
+# ── Event Comments ────────────────────────────────────────────────────────────
+
+def _get_ct_and_obj(model_label, object_id):
+    """
+    Resolve a short model label ('lecture', 'studentpersonalevent', …)
+    to a (ContentType, event_object) pair.  Returns (None, None) on failure.
+    """
+    MODEL_MAP = {
+        'lecture': Lecture,
+        'studentpersonalevent': StudentPersonalEvent,
+        'facultypersonalevent': FacultyPersonalEvent,
+        'meetingrequest': MeetingRequest,
+    }
+    model_cls = MODEL_MAP.get(model_label.lower())
+    if model_cls is None:
+        return None, None
+    try:
+        obj = model_cls.objects.get(id=object_id)
+        ct = ContentType.objects.get_for_model(model_cls)
+        return ct, obj
+    except model_cls.DoesNotExist:
+        return None, None
+
+
+@login_required(login_url='login')
+def list_event_comments(request, model_label, object_id):
+    """GET — return all comments for the given event as JSON."""
+    ct, _ = _get_ct_and_obj(model_label, object_id)
+    if ct is None:
+        return JsonResponse({'status': 'error', 'message': 'Event not found.'}, status=404)
+
+    comments = EventComment.objects.filter(content_type=ct, object_id=object_id)
+    is_faculty_or_admin = hasattr(request.user, 'faculty') or request.user.is_staff or request.user.is_superuser
+
+    data = []
+    for c in comments:
+        data.append({
+            'id': c.id,
+            'author': c.author.get_full_name() or c.author.username,
+            'content': c.content,
+            'is_pinned': c.is_pinned,
+            'date_created': c.date_created.strftime('%d %b %Y %H:%M'),
+            'is_own': c.author_id == request.user.id,
+            'can_pin': is_faculty_or_admin,
+        })
+    return JsonResponse({'status': 'success', 'comments': data})
+
+
+@login_required(login_url='login')
+def add_event_comment(request, model_label, object_id):
+    """POST — add a comment to an event."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required.'}, status=405)
+
+    ct, event_obj = _get_ct_and_obj(model_label, object_id)
+    if ct is None:
+        return JsonResponse({'status': 'error', 'message': 'Event not found.'}, status=404)
+
+    content = (request.POST.get('content') or '').strip()
+    if not content:
+        return JsonResponse({'status': 'error', 'message': 'Comment cannot be empty.'})
+
+    comment = EventComment.objects.create(
+        author=request.user,
+        content=content,
+        content_type=ct,
+        object_id=object_id,
+    )
+    return JsonResponse({
+        'status': 'success',
+        'comment': {
+            'id': comment.id,
+            'author': request.user.get_full_name() or request.user.username,
+            'content': comment.content,
+            'is_pinned': comment.is_pinned,
+            'date_created': comment.date_created.strftime('%d %b %Y %H:%M'),
+            'is_own': True,
+            'can_pin': hasattr(request.user, 'faculty'),
+        },
+    })
+
+
+@login_required(login_url='login')
+def pin_event_comment(request, comment_id):
+    """POST — toggle pin status on a comment (faculty / admin only)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required.'}, status=405)
+
+    if not (hasattr(request.user, 'faculty') or request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'status': 'error', 'message': 'Only faculty or admins can pin comments.'}, status=403)
+
+    try:
+        comment = EventComment.objects.get(id=comment_id)
+    except EventComment.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Comment not found.'}, status=404)
+
+    comment.is_pinned = not comment.is_pinned
+    comment.save()
+
+    # Send "important announcement" notifications when pinning
+    if comment.is_pinned:
+        event_obj = comment.content_object
+        msg_prefix = f'[Important Announcement] {comment.author.get_full_name() or comment.author.username}: {comment.content[:120]}'
+
+        if isinstance(event_obj, Lecture):
+            # Notify all students registered for this lecture's unit
+            registered = RegisteredUnit.objects.filter(unit=event_obj.unit_name).select_related('student__student_name')
+            for reg in registered:
+                Notification.objects.create(
+                    recipient=reg.student.student_name,
+                    message=f'{msg_prefix} (Lecture: {event_obj.unit_name.course.name}, {event_obj.lecture_date})',
+                    content_object=comment,
+                )
+
+        elif isinstance(event_obj, MeetingRequest):
+            # Notify the other party
+            recipients = []
+            if request.user == event_obj.lecturer.staff:
+                recipients.append(event_obj.student.student_name)
+            else:
+                recipients.append(event_obj.lecturer.staff)
+            for recipient in recipients:
+                Notification.objects.create(
+                    recipient=recipient,
+                    message=f'{msg_prefix} (Meeting: {event_obj.title})',
+                    content_object=comment,
+                )
+
+    return JsonResponse({'status': 'success', 'is_pinned': comment.is_pinned})
+
+
+@login_required(login_url='login')
+def delete_event_comment(request, comment_id):
+    """POST — delete a comment (author or faculty/admin)."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'POST required.'}, status=405)
+
+    try:
+        comment = EventComment.objects.get(id=comment_id)
+    except EventComment.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Comment not found.'}, status=404)
+
+    is_author = comment.author_id == request.user.id
+    is_faculty = hasattr(request.user, 'faculty')
+    if not (is_author or is_faculty):
+        return JsonResponse({'status': 'error', 'message': 'Not authorised.'}, status=403)
+
+    comment.delete()
+    return JsonResponse({'status': 'success'})

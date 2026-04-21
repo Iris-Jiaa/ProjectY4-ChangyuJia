@@ -1,0 +1,128 @@
+{% extends 'dashboard/students/base.html' %}
+{% block title %}My Meeting Requests{% endblock %}
+
+{% block content %}
+<main id="main" class="main">
+    <section class="section">
+
+        {% if messages %}
+        <div class="mb-3">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show py-2" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">My Meeting Requests</h5>
+                <span class="text-muted small">Total: {{ all_requests|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Lecturer</th>
+                                <th>Topic</th>
+                                <th>Proposed Time</th>
+                                <th>Location</th>
+                                <th class="text-center">Status</th>
+                                <th>Lecturer Remarks</th>
+                                <th>Submitted</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in all_requests %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td>{{ req.lecturer.staff.get_full_name }}</td>
+                                <td><strong>{{ req.title }}</strong>
+                                    {% if req.description %}
+                                    <br><span class="text-muted small">{{ req.description|truncatechars:60 }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-nowrap">
+                                    {{ req.start_time|date:"D d M Y" }}<br>
+                                    <span class="text-muted small">{{ req.start_time|date:"H:i" }} – {{ req.end_time|date:"H:i" }}</span>
+                                </td>
+                                <td>{{ req.location }}</td>
+                                <td class="text-center">
+                                    {% if req.status == 'pending' %}
+                                        <span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif req.status == 'approved' %}
+                                        <span class="badge bg-success">Approved</span>
+                                    {% elif req.status == 'rejected' %}
+                                        <span class="badge bg-danger">Rejected</span>
+                                    {% elif req.status == 'modified' %}
+                                        <span class="badge bg-info text-dark">Modified</span>
+                                        <br><span class="small text-muted">Awaiting your response</span>
+                                    {% elif req.status == 'cancelled' %}
+                                        <span class="badge bg-secondary">Cancelled</span>
+                                    {% elif req.status == 'completed' %}
+                                        <span class="badge bg-primary">Completed</span>
+                                    {% elif req.status == 'missed' %}
+                                        <span class="badge bg-dark">Missed</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fst-italic text-muted small">
+                                    {{ req.lecturer_remarks|default:"—" }}
+                                </td>
+                                <td class="text-nowrap small text-muted">
+                                    {{ req.date_created|date:"d M Y H:i" }}
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    {% if req.status == 'modified' %}
+                                        <a href="{% url 'accept_meeting_request' req.id %}" class="btn btn-success btn-sm">
+                                            <i class="bi bi-check-circle"></i> Accept
+                                        </a>
+                                        <a href="{% url 'reject_modified_meeting_request' req.id %}" class="btn btn-danger btn-sm">
+                                            <i class="bi bi-x-circle"></i> Decline
+                                        </a>
+                                    {% elif req.status == 'pending' %}
+                                        <form method="post" action="{% url 'cancel_meeting_request' req.id %}"
+                                            onsubmit="return confirm('Cancel this meeting request?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                                <i class="bi bi-slash-circle"></i> Cancel
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <span class="text-muted small">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center text-muted py-4">
+                                    <i class="bi bi-calendar-x fs-4 d-block mb-1"></i>
+                                    You have not submitted any meeting requests yet.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status legend -->
+        <div class="card mt-3">
+            <div class="card-body py-2">
+                <small class="text-muted me-3"><strong>Status guide:</strong></small>
+                <span class="badge bg-warning text-dark me-2">Pending</span> Awaiting lecturer response &nbsp;
+                <span class="badge bg-success me-2">Approved</span> Confirmed &nbsp;
+                <span class="badge bg-danger me-2">Rejected</span> Declined by lecturer &nbsp;
+                <span class="badge bg-info text-dark me-2">Modified</span> Lecturer proposed new time — your response needed &nbsp;
+                <span class="badge bg-secondary me-2">Cancelled</span> Cancelled by you
+            </div>
+        </div>
+
+    </section>
+</main>
+{% endblock %}

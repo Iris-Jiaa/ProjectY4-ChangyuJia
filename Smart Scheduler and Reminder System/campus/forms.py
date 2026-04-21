@@ -147,13 +147,6 @@ class FeedbackForm(forms.ModelForm):
 # Edit forms
 
 class EditScheduledLectureForm(forms.ModelForm):
-    SELECT_RECURRENCE_PATTERN = (
-        (None, '-- Select one choice --'),
-        ('once', 'Once'),
-        ('daily', 'Daily'),
-        ('weekly', 'Weekly'),
-    )
-
     lecture_date = forms.DateField(widget=forms.DateInput(attrs={
             'type': 'date', 'class': 'mb-0',
         }),
@@ -172,16 +165,43 @@ class EditScheduledLectureForm(forms.ModelForm):
         label='Schedule end time',
     )
     recurrence_pattern = forms.ChoiceField(widget=forms.Select(attrs={
-            'type': 'text', 'class': 'mb-0',
+            'type': 'select', 'class': 'mb-0',
         }),
-        help_text='Schedule lecture once, daily or weekly',
+        help_text='Schedule lecture none, daily, weekly or monthly',
         label='Recurrence mode',
-        choices=SELECT_RECURRENCE_PATTERN,
+        choices=(
+            ('none', 'None'),
+            ('daily', 'Daily'),
+            ('weekly', 'Weekly'),
+            ('monthly', 'Monthly'),
+        ),
+    )
+    recurrence_end_type = forms.ChoiceField(widget=forms.Select(attrs={
+            'class': 'mb-0',
+        }),
+        choices=(
+            ('count', 'By Count'),
+            ('date', 'By Date'),
+        ),
+        required=False,
+        label='End Condition'
+    )
+    recurrence_count = forms.IntegerField(widget=forms.NumberInput(attrs={
+            'class': 'mb-0', 'min': 1,
+        }),
+        required=False,
+        label='Occurrences'
+    )
+    recurrence_end_date = forms.DateField(widget=forms.DateInput(attrs={
+            'type': 'date', 'class': 'mb-0',
+        }),
+        required=False,
+        label='End Date'
     )
 
     class Meta:
         model = Lecture
-        fields = ['lecture_date', 'start_time', 'end_time', 'recurrence_pattern']
+        fields = ['lecture_date', 'start_time', 'end_time', 'recurrence_pattern', 'recurrence_end_type', 'recurrence_count', 'recurrence_end_date']
 
 
 class ScheduleLectureForm(forms.ModelForm):
@@ -205,19 +225,41 @@ class ScheduleLectureForm(forms.ModelForm):
     recurrence_pattern = forms.ChoiceField(widget=forms.Select(attrs={
             'type': 'select', 'class': 'mb-0',
         }),
-        help_text='Schedule lecture once, daily or weekly',
+        help_text='Schedule lecture none, daily, weekly or monthly',
         label='Recurrence mode',
         choices=(
-            (None, '-- Select one choice --'),
-            ('once', 'Once'),
+            ('none', 'None'),
             ('daily', 'Daily'),
             ('weekly', 'Weekly'),
+            ('monthly', 'Monthly'),
         ),
+    )
+    recurrence_end_type = forms.ChoiceField(widget=forms.Select(attrs={
+            'class': 'mb-0',
+        }),
+        choices=(
+            ('count', 'By Count'),
+            ('date', 'By Date'),
+        ),
+        required=False,
+        label='End Condition'
+    )
+    recurrence_count = forms.IntegerField(widget=forms.NumberInput(attrs={
+            'class': 'mb-0', 'min': 1,
+        }),
+        required=False,
+        label='Occurrences'
+    )
+    recurrence_end_date = forms.DateField(widget=forms.DateInput(attrs={
+            'type': 'date', 'class': 'mb-0',
+        }),
+        required=False,
+        label='End Date'
     )
 
     class Meta:
         model = Lecture
-        exclude = ['unit_name', 'lecture_hall', 'is_attending', 'total_students']
+        fields = ['lecture_date', 'start_time', 'end_time', 'recurrence_pattern', 'recurrence_end_type', 'recurrence_count', 'recurrence_end_date']
 
     def __init__(self, *args, **kwargs):
         self.lecturer = kwargs.pop('lecturer', None)
@@ -285,16 +327,46 @@ class StudentPersonalEventForm(forms.ModelForm):
     description = forms.CharField(widget=forms.Textarea(attrs={
         'type': 'text', 'class': 'form-control', 'rows': 3, 'placeholder': 'Event Description (Optional)'
     }), required=False)
+    priority = forms.ChoiceField(
+        choices=(('low', 'Low'), ('medium', 'Medium'), ('high', 'High')),
+        initial='medium',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='Priority',
+    )
     start_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
         'type': 'datetime-local', 'class': 'form-control'
     }))
     end_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
         'type': 'datetime-local', 'class': 'form-control'
     }))
+    recurrence_pattern = forms.ChoiceField(widget=forms.Select(attrs={
+        'class': 'form-control'
+    }), choices=(
+        ('none', 'None'),
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+    ), initial='none')
+
+    recurrence_end_type = forms.ChoiceField(widget=forms.Select(attrs={
+        'class': 'form-control'
+    }), choices=(
+        ('count', 'By Count'),
+        ('date', 'By Date'),
+    ), required=False)
+
+    recurrence_count = forms.IntegerField(widget=forms.NumberInput(attrs={
+        'class': 'form-control', 'min': 1
+    }), required=False)
+
+    recurrence_end_date = forms.DateField(widget=forms.DateInput(attrs={
+        'type': 'date', 'class': 'form-control'
+    }), required=False)
 
     class Meta:
         model = StudentPersonalEvent
-        fields = ['title', 'description', 'start_date', 'end_date']
+        fields = ['title', 'description', 'priority', 'start_date', 'end_date',
+                  'recurrence_pattern', 'recurrence_end_type', 'recurrence_count', 'recurrence_end_date']
 
     def __init__(self, *args, **kwargs):
         self.student_instance = kwargs.pop('student_instance', None)
@@ -366,16 +438,45 @@ class FacultyPersonalEventForm(forms.ModelForm):
     description = forms.CharField(widget=forms.Textarea(attrs={
         'type': 'text', 'class': 'form-control', 'rows': 3, 'placeholder': 'Event Description (Optional)'
     }), required=False)
+    priority = forms.ChoiceField(
+        choices=(('low', 'Low'), ('medium', 'Medium'), ('high', 'High')),
+        initial='medium',
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='Priority',
+    )
     start_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
         'type': 'datetime-local', 'class': 'form-control'
     }))
     end_date = forms.DateTimeField(widget=forms.DateTimeInput(attrs={
         'type': 'datetime-local', 'class': 'form-control'
     }))
+    recurrence_pattern = forms.ChoiceField(widget=forms.Select(attrs={
+        'class': 'form-control'
+    }), choices=(
+        ('none', 'None'),
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+    ), initial='none')
+
+    recurrence_end_type = forms.ChoiceField(widget=forms.Select(attrs={
+        'class': 'form-control'
+    }), choices=(
+        ('count', 'By Count'),
+        ('date', 'By Date'),
+    ), required=False)
+
+    recurrence_count = forms.IntegerField(widget=forms.NumberInput(attrs={
+        'class': 'form-control', 'min': 1
+    }), required=False)
+
+    recurrence_end_date = forms.DateField(widget=forms.DateInput(attrs={
+        'type': 'date', 'class': 'form-control'
+    }), required=False)
 
     class Meta:
         model = FacultyPersonalEvent
-        fields = ['title', 'description', 'start_date', 'end_date']
+        fields = ['title', 'description', 'priority', 'start_date', 'end_date', 'recurrence_pattern', 'recurrence_end_type', 'recurrence_count', 'recurrence_end_date']
 
     def __init__(self, *args, **kwargs):
         self.faculty_instance = kwargs.pop('faculty_instance', None)

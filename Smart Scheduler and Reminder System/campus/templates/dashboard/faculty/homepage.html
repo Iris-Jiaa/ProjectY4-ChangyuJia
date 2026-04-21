@@ -152,26 +152,9 @@
 
 					<div class="card">
 						<div class="card-body">
-							<h5 class="card-title">Recommendations</h5>
-							<div class="activity recommendation-box-content">
-								<div class="activity-item d-flex">
-									<div class="activity-content">
-										<p class="small fst-italic">
-											<strong>Campus Job Fair</strong><br>
-											Date: December 10, 2025<br>
-											Description: Meet with representatives from top companies to find internship and full-time opportunities.
-										</p>
-									</div>
-								</div>
-								<div class="activity-item d-flex">
-									<div class="activity-content">
-										<p class="small fst-italic">
-											<strong>Christmas Celebration Party</strong><br>
-											Date: December 24, 2025<br>
-											Description: Celebrate Christmas with friends, enjoy delicious food, and watch wonderful performances.
-										</p>
-									</div>
-								</div>
+							<h5 class="card-title">Personal Tasks <span class="text-muted small">| By Priority</span></h5>
+							<div id="personal-tasks-list">
+								<div class="text-center text-muted py-3 small">Loading tasks…</div>
 							</div>
 						</div>
 					</div>
@@ -217,6 +200,19 @@
 	{{ personal_event_form|crispy }}
 	<div id="edit-form-errors" class="text-danger mt-2"></div>
 	</form>
+	<hr class="my-3">
+	<h6 class="mb-2">
+	  <i class="bi bi-chat-dots me-1"></i> Comments
+	  <span id="ev-comment-pinned-count" class="badge bg-warning text-dark ms-1" style="display:none"></span>
+	</h6>
+	<div id="ev-comments-list" style="max-height:180px;overflow-y:auto;" class="mb-2"></div>
+	<div class="input-group input-group-sm mb-1">
+	  <textarea id="ev-new-comment-text" class="form-control" rows="2" placeholder="Add a comment..."></textarea>
+	  <button class="btn btn-outline-primary" type="button" id="ev-submit-comment-btn">
+	    <i class="bi bi-send"></i> Post
+	  </button>
+	</div>
+	<div id="ev-comment-error" class="text-danger small" style="display:none"></div>
 	</div>
 	<div class="modal-footer">
 	<button type="button" class="btn btn-danger" id="deleteEventBtn">Delete</button>
@@ -227,7 +223,162 @@
 	</div>
 	</div>
 
+	<!-- Lecture View Modal -->
+	<div class="modal fade" id="lectureViewModal" tabindex="-1">
+	<div class="modal-dialog modal-lg">
+	<div class="modal-content">
+	<div class="modal-header">
+	<h5 class="modal-title">Lecture Details</h5>
+	<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+	</div>
+	<div class="modal-body">
+	  <div class="row mb-2">
+	    <div class="col-4 fw-semibold text-muted">Course</div>
+	    <div class="col-8" id="lv-course"></div>
+	  </div>
+	  <div class="row mb-2">
+	    <div class="col-4 fw-semibold text-muted">Date &amp; Time</div>
+	    <div class="col-8" id="lv-datetime"></div>
+	  </div>
+	  <div class="row mb-2">
+	    <div class="col-4 fw-semibold text-muted">Location</div>
+	    <div class="col-8" id="lv-location"></div>
+	  </div>
+	  <div class="row mb-2">
+	    <div class="col-4 fw-semibold text-muted">Status</div>
+	    <div class="col-8" id="lv-status"></div>
+	  </div>
+	  <hr class="my-3">
+	  <h6 class="mb-2">
+	    <i class="bi bi-chat-dots me-1"></i> Announcements &amp; Comments
+	    <span id="lv-comment-pinned-count" class="badge bg-warning text-dark ms-1" style="display:none"></span>
+	  </h6>
+	  <div id="lv-comments-list" style="max-height:220px;overflow-y:auto;" class="mb-2"></div>
+	  <div class="input-group input-group-sm mb-1">
+	    <textarea id="lv-new-comment-text" class="form-control" rows="2" placeholder="Add an announcement or comment..."></textarea>
+	    <button class="btn btn-outline-primary" type="button" id="lv-submit-comment-btn">
+	      <i class="bi bi-send"></i> Post
+	    </button>
+	  </div>
+	  <div id="lv-comment-error" class="text-danger small" style="display:none"></div>
+	</div>
+	<div class="modal-footer">
+	  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+	</div>
+	</div>
+	</div>
+	</div>
+
 	<script>
+		// ── Comment helpers ──────────────────────────────────────────────────────
+		var csrfComments = '{{ csrf_token }}';
+		var currentCommentTarget = null;
+
+		function renderComments(comments, listEl, pinnedCountEl) {
+			if (!listEl) return;
+			var pinned = (comments || []).filter(function(c) { return c.is_pinned; }).length;
+			if (pinnedCountEl) {
+				if (pinned > 0) { pinnedCountEl.textContent = pinned + ' pinned'; pinnedCountEl.style.display = ''; }
+				else { pinnedCountEl.style.display = 'none'; }
+			}
+			if (!comments || comments.length === 0) {
+				listEl.innerHTML = '<p class="text-muted small text-center py-2">No comments yet.</p>';
+				return;
+			}
+			var html = '';
+			comments.forEach(function(c) {
+				var pinLabel = c.is_pinned ? '<span class="badge bg-warning text-dark me-1"><i class="bi bi-pin-angle-fill"></i> Pinned</span>' : '';
+				var pinBtn = '<button class="btn btn-xs btn-outline-warning" onclick="pinComment(\'' + c.id + '\')">' + (c.is_pinned ? 'Unpin' : 'Pin') + '</button>';
+				var delBtn = '<button class="btn btn-xs btn-outline-danger ms-1" onclick="deleteComment(\'' + c.id + '\')">Delete</button>';
+				html += '<div class="comment-item' + (c.is_pinned ? ' pinned' : '') + '" id="comment-' + c.id + '">'
+					+ '<div><span class="comment-author">' + (c.author || 'Unknown') + '</span>'
+					+ '<span class="comment-meta">' + (c.date_created || '') + '</span>'
+					+ pinLabel + '</div>'
+					+ '<div class="comment-body markdown-body">' + marked.parse(c.content) + '</div>'
+					+ '<div class="comment-actions">' + pinBtn + delBtn + '</div>'
+					+ '</div>';
+			});
+			listEl.innerHTML = html;
+		}
+
+		function loadComments(modelLabel, objectId, listEl, pinnedCountEl) {
+			currentCommentTarget = { model_label: modelLabel, object_id: objectId, listEl: listEl, pinnedCountEl: pinnedCountEl };
+			if (listEl) listEl.innerHTML = '<p class="text-muted small text-center py-2"><i class="bi bi-arrow-repeat"></i> Loading…</p>';
+			fetch('/campus/events/' + modelLabel + '/' + objectId + '/comments/')
+				.then(function(r) { return r.json(); })
+				.then(function(data) { renderComments(data.comments || [], listEl, pinnedCountEl); })
+				.catch(function(err) { console.error('Load comments error:', err); });
+		}
+
+		function pinComment(commentId) {
+			fetch('/campus/events/comments/' + commentId + '/pin/', {
+				method: 'POST',
+				headers: { 'X-CSRFToken': csrfComments }
+			})
+			.then(function(r) { return r.json(); })
+			.then(function(data) {
+				if (data.status === 'success' && currentCommentTarget) {
+					loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id, currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
+				}
+			});
+		}
+
+		function deleteComment(commentId) {
+			if (!confirm('Delete this comment?')) return;
+			fetch('/campus/events/comments/' + commentId + '/delete/', {
+				method: 'POST',
+				headers: { 'X-CSRFToken': csrfComments }
+			})
+			.then(function(r) { return r.json(); })
+			.then(function(data) {
+				if (data.status === 'success' && currentCommentTarget) {
+					loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id, currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
+				}
+			});
+		}
+
+		// ── Priority helpers ─────────────────────────────────────────────────────
+		const PRIORITY_COLORS = { low: '#28a745', medium: '#fd7e14', high: '#dc3545' };
+		function priorityOrder(p) { return p === 'high' ? 0 : p === 'medium' ? 1 : 2; }
+
+		function renderTasksPanel(events) {
+			const container = document.getElementById('personal-tasks-list');
+			if (!events || events.length === 0) {
+				container.innerHTML = '<p class="text-center text-muted small py-2">No personal events yet.</p>';
+				return;
+			}
+			const sorted = events
+				.filter(e => !['completed','missed','exempt'].includes(e.extendedProps?.status || e.status))
+				.sort((a, b) => {
+					const pa = priorityOrder(a.extendedProps?.priority || a.priority);
+					const pb = priorityOrder(b.extendedProps?.priority || b.priority);
+					if (pa !== pb) return pa - pb;
+					return new Date(a.start) - new Date(b.start);
+				});
+			if (sorted.length === 0) {
+				container.innerHTML = '<p class="text-center text-muted small py-2">No upcoming personal events.</p>';
+				return;
+			}
+			let html = '<ul class="list-unstyled mb-0">';
+			sorted.forEach(ev => {
+				const priority = ev.extendedProps?.priority || ev.priority || 'medium';
+				const color = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
+				const label = priority.charAt(0).toUpperCase() + priority.slice(1);
+				const start = new Date(ev.start);
+				const dateStr = start.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+				html += `<li class="d-flex align-items-start py-2 border-bottom">
+					<span class="priority-dot flex-shrink-0 mt-1 me-2" style="background:${color}" title="${label} priority"></span>
+					<div class="flex-grow-1 overflow-hidden">
+						<div class="fw-semibold text-truncate">${ev.title}</div>
+						<div class="text-muted small">${dateStr}</div>
+					</div>
+					<span class="badge ms-2 flex-shrink-0" style="background:${color};font-size:0.65rem">${label}</span>
+				</li>`;
+			});
+			html += '</ul>';
+			container.innerHTML = html;
+		}
+
 		document.addEventListener('DOMContentLoaded', function() {
 			var calendarEl = document.getElementById('calendar');
 			var lectureEvents = {{ events|safe }};
@@ -262,9 +413,35 @@
 	url: "{% url 'get_personal_events' %}",
 	failure: function() {
 	alert('There was an error while fetching personal events!');
+	},
+	success: function(data) {
+	renderTasksPanel(data);
+	}
+	},
+	{
+	url: "{% url 'get_holidays_api' %}",
+	failure: function() {
+	console.warn('Failed to load holiday data.');
 	}
 	}
 	],
+	dayCellDidMount: function(info) {
+	var cellDate = info.date;
+	var allEvents = calendar.getEvents();
+	for (var i = 0; i < allEvents.length; i++) {
+		var ev = allEvents[i];
+		if (ev.display === 'background' && ev.extendedProps && ev.extendedProps.is_holiday) {
+			if (cellDate >= ev.start && cellDate < ev.end) {
+				var label = document.createElement('div');
+				label.className = 'holiday-label';
+				label.textContent = ev.extendedProps.holiday_name || 'Holiday';
+				info.el.style.position = 'relative';
+				info.el.appendChild(label);
+				break;
+			}
+		}
+	}
+	},
 	dateClick: function(info) {
 	addEventForm.reset();
 	document.getElementById('add-form-errors').innerText = '';
@@ -276,20 +453,90 @@
 	addEventModal.show();
 	},
 	eventClick: function(info) {
-	if (info.event.url || !info.event.id) return; // Ignore lectures or events without ID
+	if (info.event.url || !info.event.id) return;
 
-	currentEventId = info.event.id;
-	document.getElementById('edit-form-errors').innerText = '';
+	var eventType = info.event.extendedProps.event_type || '';
 
-	editEventForm.querySelector('#id_title').value = info.event.title;
-	editEventForm.querySelector('#id_description').value = info.event.extendedProps.description || '';
-	editEventForm.querySelector('#id_start_date').value = toLocalISOString(info.event.start);
-	editEventForm.querySelector('#id_end_date').value = toLocalISOString(info.event.end);
-
-	eventModal.show();
+	if (eventType === 'lecture') {
+		// Show read-only lecture detail modal with comments
+		var start = info.event.start;
+		var end = info.event.end;
+		var dateOpts = { weekday:'short', month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' };
+		var timeOpts = { hour:'2-digit', minute:'2-digit' };
+		document.getElementById('lv-course').textContent = info.event.title;
+		document.getElementById('lv-datetime').textContent =
+			(start ? start.toLocaleString([], dateOpts) : '—') +
+			(end ? ' – ' + end.toLocaleString([], timeOpts) : '');
+		document.getElementById('lv-location').textContent = info.event.extendedProps.location || 'TBA';
+		document.getElementById('lv-status').textContent = info.event.extendedProps.status || '—';
+		document.getElementById('lv-new-comment-text').value = '';
+		document.getElementById('lv-comment-error').style.display = 'none';
+		loadComments('lecture', info.event.id,
+			document.getElementById('lv-comments-list'),
+			document.getElementById('lv-comment-pinned-count'));
+		new bootstrap.Modal(document.getElementById('lectureViewModal')).show();
+	} else {
+		// Personal event — show edit modal with comments
+		currentEventId = info.event.id;
+		document.getElementById('edit-form-errors').innerText = '';
+		editEventForm.querySelector('#id_title').value = info.event.title;
+		editEventForm.querySelector('#id_description').value = info.event.extendedProps.description || '';
+		editEventForm.querySelector('#id_start_date').value = toLocalISOString(info.event.start);
+		editEventForm.querySelector('#id_end_date').value = toLocalISOString(info.event.end);
+		var priorityEl = editEventForm.querySelector('#id_priority');
+		if (priorityEl) priorityEl.value = info.event.extendedProps.priority || 'medium';
+		document.getElementById('ev-new-comment-text').value = '';
+		document.getElementById('ev-comment-error').style.display = 'none';
+		loadComments('facultypersonalevent', info.event.id,
+			document.getElementById('ev-comments-list'),
+			document.getElementById('ev-comment-pinned-count'));
+		eventModal.show();
+	}
 	}
 			});
 			calendar.render();
+
+	// Recurrence Fields Toggle Logic
+	function findFieldRow(form, name) {
+		const el = form.querySelector('[name="' + name + '"]');
+		if (!el) return null;
+		return el.closest('.mb-3') || el.closest('.form-group') || el.parentElement;
+	}
+	function toggleRecurrenceFields(form) {
+		const patternEl = form.querySelector('[name="recurrence_pattern"]');
+		if (!patternEl) return;
+		const pattern = patternEl.value;
+		const endTypeRow = findFieldRow(form, 'recurrence_end_type');
+		const countRow   = findFieldRow(form, 'recurrence_count');
+		const endDateRow = findFieldRow(form, 'recurrence_end_date');
+		if (!endTypeRow || !countRow || !endDateRow) return;
+
+		if (pattern === 'none') {
+			endTypeRow.style.display = 'none';
+			countRow.style.display = 'none';
+			endDateRow.style.display = 'none';
+		} else {
+			endTypeRow.style.display = 'block';
+			const endTypeEl = form.querySelector('[name="recurrence_end_type"]');
+			const endType = endTypeEl ? endTypeEl.value : 'count';
+			if (endType === 'count') {
+				countRow.style.display = 'block';
+				endDateRow.style.display = 'none';
+			} else if (endType === 'date') {
+				countRow.style.display = 'none';
+				endDateRow.style.display = 'block';
+			} else {
+				countRow.style.display = 'none';
+				endDateRow.style.display = 'none';
+			}
+		}
+	}
+
+	[addEventForm, editEventForm].forEach(form => {
+		form.querySelector('[name="recurrence_pattern"]').addEventListener('change', () => toggleRecurrenceFields(form));
+		form.querySelector('[name="recurrence_end_type"]').addEventListener('change', () => toggleRecurrenceFields(form));
+		toggleRecurrenceFields(form); // Initial call
+	});
 
 	// Handle ADD form submission
 	document.getElementById('saveEventBtn').addEventListener('click', function() {
@@ -363,6 +610,129 @@
 	});
 	}
 	});
+
+	// Handle submit comment — Lecture view modal
+	document.getElementById('lv-submit-comment-btn').addEventListener('click', function() {
+		if (!currentCommentTarget) return;
+		var text = document.getElementById('lv-new-comment-text').value.trim();
+		var errEl = document.getElementById('lv-comment-error');
+		errEl.style.display = 'none';
+		if (!text) { errEl.textContent = 'Comment cannot be empty.'; errEl.style.display = ''; return; }
+		var formData = new FormData();
+		formData.append('content', text);
+		fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
+			method: 'POST',
+			body: formData,
+			headers: { 'X-CSRFToken': csrfComments }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			if (data.status === 'success') {
+				document.getElementById('lv-new-comment-text').value = '';
+				loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id, currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
+			} else {
+				errEl.textContent = data.message || 'Error posting comment.';
+				errEl.style.display = '';
+			}
+		})
+		.catch(function(err) { console.error('Comment submit error:', err); });
+	});
+
+	// Handle submit comment — Edit event modal
+	document.getElementById('ev-submit-comment-btn').addEventListener('click', function() {
+		if (!currentCommentTarget) return;
+		var text = document.getElementById('ev-new-comment-text').value.trim();
+		var errEl = document.getElementById('ev-comment-error');
+		errEl.style.display = 'none';
+		if (!text) { errEl.textContent = 'Comment cannot be empty.'; errEl.style.display = ''; return; }
+		var formData = new FormData();
+		formData.append('content', text);
+		fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
+			method: 'POST',
+			body: formData,
+			headers: { 'X-CSRFToken': csrfComments }
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			if (data.status === 'success') {
+				document.getElementById('ev-new-comment-text').value = '';
+				loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id, currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
+			} else {
+				errEl.textContent = data.message || 'Error posting comment.';
+				errEl.style.display = '';
+			}
+		})
+		.catch(function(err) { console.error('Comment submit error:', err); });
+	});
 		});
 	</script>
+<style>
+/* Priority dot */
+.priority-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+.holiday-label {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(100, 100, 100, 0.75);
+    border-radius: 3px;
+    padding: 1px 3px;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 2;
+}
+.fc .holiday-bg-event {
+    opacity: 0.35;
+}
+/* Event comment styles */
+.comment-item {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-left: 3px solid #dee2e6;
+    font-size: 0.85rem;
+}
+.comment-item.pinned {
+    border-left-color: #ffc107;
+    background: #fffdf0;
+}
+.comment-item .comment-author {
+    font-weight: 600;
+    color: #343a40;
+}
+.comment-item .comment-meta {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-left: 6px;
+}
+.comment-item .comment-body {
+    margin-top: 4px;
+    color: #495057;
+    white-space: pre-wrap;
+}
+.comment-item .comment-actions {
+    margin-top: 4px;
+    display: flex;
+    gap: 4px;
+}
+.btn-xs {
+    padding: 1px 6px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    border-radius: 3px;
+}
+</style>
 	{% endblock %}

@@ -4,7 +4,7 @@ import uuid
 
 class AccountsModelTests(TestCase):
     def setUp(self):
-        # 创建一个基础用户，包含必填的 dob 和 gender
+        # Create a base user with required fields: dob and gender
         self.user = User.objects.create_user(
             username='teststudent',
             email='student@test.com',
@@ -17,11 +17,11 @@ class AccountsModelTests(TestCase):
         )
 
     def test_user_creation(self):
-        """测试用户是否能正确创建并保存提醒偏好"""
+        """Test that a user is created correctly and reminder preference is saved."""
         self.assertEqual(self.user.email, 'student@test.com')
         self.assertEqual(self.user.reminder_preference, '15min')
-        
-        # 测试更新偏好
+
+        # Test updating preferences
         self.user.reminder_preference = '30min,60min'
         self.user.notification_method = 'email'
         self.user.save()
@@ -30,7 +30,7 @@ class AccountsModelTests(TestCase):
         self.assertEqual(updated_user.notification_method, 'email')
 
     def test_student_profile_creation(self):
-        """测试学生档案的关联创建"""
+        """Test that a student profile is correctly linked to its user account."""
         student = Student.objects.create(
             student_name=self.user,
             reg_no='STU/001/2023',

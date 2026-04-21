@@ -50,12 +50,26 @@
                 </div>
             </div>
 
-            <div class="col-lg-12">
+            <div class="col-lg-6">
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title">Students Management</h5>
                         <p class="card-text">View and manage all registered students.</p>
                         <a href="{% url 'admin_all_students' %}" class="btn btn-primary">View All Students</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card border-start border-warning border-4">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-calendar-x-fill text-warning me-1"></i>
+                            Holiday Management
+                        </h5>
+                        <p class="card-text text-muted small">
+                            Configure public holidays and exam weeks. Events on these dates will be automatically <span class="badge bg-secondary">Exempt</span> — no reminders sent, absences not counted.
+                        </p>
+                        <a href="{% url 'admin_holidays' %}" class="btn btn-warning">Manage Holidays</a>
                     </div>
                 </div>
             </div>

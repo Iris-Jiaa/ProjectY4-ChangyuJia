@@ -201,26 +201,9 @@
 
 					<div class="card">
 						<div class="card-body">
-							<h5 class="card-title">Recommendations</h5>
-							<div class="activity recommendation-box-content">
-								<div class="activity-item d-flex">
-									<div class="activity-content">
-										<p class="small fst-italic">
-											<strong>Campus Job Fair</strong><br>
-											Date: December 10, 2025<br>
-											Description: Meet with representatives from top companies to find internship and full-time opportunities.
-										</p>
-									</div>
-								</div>
-								<div class="activity-item d-flex">
-									<div class="activity-content">
-										<p class="small fst-italic">
-											<strong>Christmas Celebration Party</strong><br>
-											Date: December 24, 2025<br>
-											Description: Celebrate Christmas with friends, enjoy delicious food, and watch wonderful performances.
-										</p>
-									</div>
-								</div>
+							<h5 class="card-title">Personal Tasks <span class="text-muted small">| By Priority</span></h5>
+							<div id="personal-tasks-list">
+								<div class="text-center text-muted py-3 small">Loading tasks…</div>
 							</div>
 						</div>
 					</div>
@@ -293,6 +276,7 @@
                         <p id="viewEventDescription"></p>
                         <p><strong>Time:</strong> <span id="viewEventTime"></span></p>
                         <p><strong>Status:</strong> <span id="viewEventStatus" class="badge"></span></p>
+                        <p id="viewEventPriorityRow" style="display:none"><strong>Priority:</strong> <span id="viewEventPriorityDot" class="priority-dot"></span> <span id="viewEventPriorityLabel"></span></p>
                         <div id="signInContainer" class="mt-3" style="display: none;">
                             <button type="button" class="btn btn-success w-100" id="eventSignInBtn">
                                 <i class="bi bi-check-circle"></i> Sign In / Confirm Attendance
@@ -300,6 +284,22 @@
                         </div>
                         <div id="signedInMsg" class="alert alert-success mt-3" style="display: none;">
                             <i class="bi bi-check-circle-fill"></i> You have signed in to this event.
+                        </div>
+                        <!-- Comment Section -->
+                        <hr class="my-3">
+                        <div id="event-comments-section">
+                            <h6 class="d-flex align-items-center gap-2">
+                                <i class="bi bi-chat-left-text"></i> Announcements &amp; Notes
+                                <span id="comment-pinned-count" class="badge bg-warning text-dark" style="display:none"></span>
+                            </h6>
+                            <div id="comments-list" class="mb-2" style="max-height:220px;overflow-y:auto;"></div>
+                            <div class="input-group input-group-sm">
+                                <textarea id="new-comment-text" class="form-control" rows="2" placeholder="Add a note…" style="resize:none;"></textarea>
+                                <button class="btn btn-outline-primary" type="button" id="submit-comment-btn">
+                                    <i class="bi bi-send"></i>
+                                </button>
+                            </div>
+                            <div id="comment-error" class="text-danger small mt-1" style="display:none;"></div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -310,11 +310,133 @@
         </div>
 
 		<script>
+            // Priority helpers
+            const PRIORITY_COLORS = { low: '#28a745', medium: '#fd7e14', high: '#dc3545' };
+            function priorityOrder(p) { return p === 'high' ? 0 : p === 'medium' ? 1 : 2; }
+
+            // ── Comment helpers ────────────────────────────────────────────────
+            let currentCommentTarget = null; // { model_label, object_id }
+            const csrfComments = document.cookie.split(';').reduce((v, c) => {
+                const [k, val] = c.trim().split('=');
+                return k === 'csrftoken' ? decodeURIComponent(val) : v;
+            }, '');
+
+            function renderComments(comments) {
+                const list = document.getElementById('comments-list');
+                const pinnedBadge = document.getElementById('comment-pinned-count');
+                if (!comments.length) {
+                    list.innerHTML = '<p class="text-muted small text-center py-2">No notes yet. Be the first to add one.</p>';
+                    pinnedBadge.style.display = 'none';
+                    return;
+                }
+                const pinned = comments.filter(c => c.is_pinned).length;
+                if (pinned) { pinnedBadge.textContent = pinned + ' pinned'; pinnedBadge.style.display = ''; }
+                else { pinnedBadge.style.display = 'none'; }
+
+                list.innerHTML = comments.map(c => `
+                    <div class="comment-item border rounded p-2 mb-1 ${c.is_pinned ? 'border-warning bg-warning bg-opacity-10' : ''}" data-id="${c.id}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                ${c.is_pinned ? '<span class="badge bg-warning text-dark me-1"><i class="bi bi-pin-fill"></i> Pinned</span>' : ''}
+                                <span class="fw-semibold small">${c.author}</span>
+                                <span class="text-muted small ms-1">${c.date_created}</span>
+                                <div class="mb-0 mt-1 small markdown-body">${marked.parse(c.content)}</div>
+                            </div>
+                            <div class="ms-2 d-flex gap-1 flex-shrink-0">
+                                ${c.can_pin ? `<button class="btn btn-xs btn-outline-warning btn-pin-comment p-0 px-1" data-id="${c.id}" title="${c.is_pinned ? 'Unpin' : 'Pin'}"><i class="bi bi-pin${c.is_pinned ? '-fill' : ''}"></i></button>` : ''}
+                                ${c.is_own ? `<button class="btn btn-xs btn-outline-danger btn-delete-comment p-0 px-1" data-id="${c.id}" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                            </div>
+                        </div>
+                    </div>`).join('');
+
+                // Bind pin buttons
+                list.querySelectorAll('.btn-pin-comment').forEach(btn => {
+                    btn.addEventListener('click', () => pinComment(btn.dataset.id));
+                });
+                // Bind delete buttons
+                list.querySelectorAll('.btn-delete-comment').forEach(btn => {
+                    btn.addEventListener('click', () => deleteComment(btn.dataset.id));
+                });
+            }
+
+            function loadComments(model_label, object_id) {
+                currentCommentTarget = { model_label, object_id };
+                document.getElementById('comments-list').innerHTML = '<p class="text-muted small text-center py-2">Loading…</p>';
+                fetch(`/campus/events/${model_label}/${object_id}/comments/`)
+                    .then(r => r.json())
+                    .then(data => { if (data.status === 'success') renderComments(data.comments); });
+            }
+
+            function pinComment(commentId) {
+                fetch(`/campus/events/comments/${commentId}/pin/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfComments }
+                }).then(r => r.json()).then(data => {
+                    if (data.status === 'success' && currentCommentTarget)
+                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+                });
+            }
+
+            function deleteComment(commentId) {
+                if (!confirm('Delete this comment?')) return;
+                fetch(`/campus/events/comments/${commentId}/delete/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfComments }
+                }).then(r => r.json()).then(data => {
+                    if (data.status === 'success' && currentCommentTarget)
+                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+                });
+            }
+
             // Helper to format dates for datetime-local input
             function toLocalISOString(date) {
                 const d = new Date(date);
                 const pad = (num) => (num < 10 ? '0' + num : num);
                 return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+
+            // Render the personal tasks panel sorted by priority
+            function renderTasksPanel(events) {
+                const container = document.getElementById('personal-tasks-list');
+                if (!events || events.length === 0) {
+                    container.innerHTML = '<p class="text-center text-muted small py-2">No personal events yet.</p>';
+                    return;
+                }
+                // Only non-completed, non-missed, non-past events; sort by priority then start date
+                const now = new Date();
+                const sorted = events
+                    .filter(e => {
+                        const status = e.extendedProps?.status || e.status;
+                        if (['completed','missed','exempt'].includes(status)) return false;
+                        const eventEnd = new Date(e.end || e.start);
+                        return eventEnd >= now;
+                    })
+                    .sort((a, b) => {
+                        const pa = priorityOrder(a.extendedProps?.priority || a.priority);
+                        const pb = priorityOrder(b.extendedProps?.priority || b.priority);
+                        if (pa !== pb) return pa - pb;
+                        return new Date(a.start) - new Date(b.start);
+                    });
+                if (sorted.length === 0) {
+                    container.innerHTML = '<p class="text-center text-muted small py-2">No upcoming personal events.</p>';
+                    return;
+                }
+                let html = '<ul class="list-unstyled mb-0">';
+                sorted.forEach(ev => {
+                    const priority = ev.extendedProps?.priority || ev.priority || 'medium';
+                    const color = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
+                    const label = priority.charAt(0).toUpperCase() + priority.slice(1);
+                    const start = new Date(ev.start);
+                    const dateStr = start.toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                    html += `<li class="d-flex align-items-start py-2 border-bottom">
+                        <span class="priority-dot flex-shrink-0 mt-1 me-2" style="background:${color}" title="${label} priority"></span>
+                        <div class="flex-grow-1 overflow-hidden">
+                            <div class="fw-semibold text-truncate">${ev.title}</div>
+                            <div class="text-muted small">${dateStr}</div>
+                        </div>
+                        <span class="badge ms-2 flex-shrink-0" style="background:${color};font-size:0.65rem">${label}</span>
+                    </li>`;
+                });
+                html += '</ul>';
+                container.innerHTML = html;
             }
 
 			document.addEventListener('DOMContentLoaded', function() {
@@ -343,9 +465,37 @@
                             url: "{% url 'get_personal_events' %}",
                             failure: function() {
                                 alert('There was an error while fetching personal events!');
+                            },
+                            success: function(data) {
+                                renderTasksPanel(data);
+                            }
+                        },
+                        {
+                            url: "{% url 'get_holidays_api' %}",
+                            failure: function() {
+                                console.warn('Failed to load holiday data.');
                             }
                         }
                     ],
+                    dayCellDidMount: function(info) {
+                        var cellDate = info.date;
+                        var allEvents = calendar.getEvents();
+                        for (var i = 0; i < allEvents.length; i++) {
+                            var ev = allEvents[i];
+                            if (ev.display === 'background' && ev.extendedProps && ev.extendedProps.is_holiday) {
+                                var evStart = ev.start;
+                                var evEnd = ev.end;
+                                if (cellDate >= evStart && cellDate < evEnd) {
+                                    var label = document.createElement('div');
+                                    label.className = 'holiday-label';
+                                    label.textContent = ev.extendedProps.holiday_name || 'Holiday';
+                                    info.el.style.position = 'relative';
+                                    info.el.appendChild(label);
+                                    break;
+                                }
+                            }
+                        }
+                    },
                     eventClick: function(info) {
                         var event = info.event;
                         var props = event.extendedProps;
@@ -353,12 +503,16 @@
                         if (props.event_type === 'lecture' || props.event_type === 'meeting') {
                             document.getElementById('viewEventTitle').innerText = event.title;
                             document.getElementById('viewEventDescription').innerText = props.description || '';
-                            document.getElementById('viewEventTime').innerText = moment(event.start).format('YYYY-MM-DD HH:mm') + ' - ' + moment(event.end).format('HH:mm');
-                            
+                            var startStr = event.start ? event.start.toLocaleString([], {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+                            var endStr   = event.end   ? event.end.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+                            document.getElementById('viewEventTime').innerText = startStr + (endStr ? ' – ' + endStr : '');
+                            document.getElementById('viewEventPriorityRow').style.display = 'none';
+
                             var statusEl = document.getElementById('viewEventStatus');
                             statusEl.innerText = props.status.charAt(0).toUpperCase() + props.status.slice(1);
-                            statusEl.className = 'badge ' + (props.status === 'completed' ? 'bg-success' : (props.status === 'missed' ? 'bg-danger' : 'bg-primary'));
-                            
+                            var statusBadgeClass = props.status === 'completed' ? 'bg-success' : props.status === 'missed' ? 'bg-danger' : props.status === 'exempt' ? 'bg-secondary' : 'bg-primary';
+                            statusEl.className = 'badge ' + statusBadgeClass;
+
                             var signInContainer = document.getElementById('signInContainer');
                             var signedInMsg = document.getElementById('signedInMsg');
                             var signInBtn = document.getElementById('eventSignInBtn');
@@ -369,7 +523,6 @@
                             } else if (props.status === 'scheduled' || props.status === 'approved') {
                                 signInContainer.style.display = 'block';
                                 signedInMsg.style.display = 'none';
-                                
                                 signInBtn.onclick = function() {
                                     if (props.event_type === 'lecture') {
                                         window.location.href = '/campus/lecture/' + event.id + '/schedule/{{ request.user.student.id }}/confirm/';
@@ -378,14 +531,12 @@
                                             method: 'POST',
                                             headers: { 'X-CSRFToken': '{{ csrf_token }}' }
                                         })
-                                        .then(response => response.json())
+                                        .then(r => r.json())
                                         .then(data => {
                                             if (data.status === 'success') {
                                                 new bootstrap.Modal(document.getElementById('viewEventModal')).hide();
                                                 location.reload();
-                                            } else {
-                                                alert('Error signing in: ' + data.message);
-                                            }
+                                            } else { alert('Error signing in: ' + data.message); }
                                         });
                                     }
                                 };
@@ -393,28 +544,42 @@
                                 signInContainer.style.display = 'none';
                                 signedInMsg.style.display = 'none';
                             }
-                            
+
+                            // Load comments
+                            var modelLabel = props.event_type === 'lecture' ? 'lecture' : 'meetingrequest';
+                            loadComments(modelLabel, event.id);
+
                             new bootstrap.Modal(document.getElementById('viewEventModal')).show();
                         } else if (props.description !== undefined) {
-                            // Personal Event - show status and sign-in option too
+                            // Personal Event — pre-populate edit form fields
                             document.getElementById('edit_event_id').value = event.id;
                             editEventForm.querySelector('#id_title').value = event.title;
                             editEventForm.querySelector('#id_description').value = props.description || '';
                             editEventForm.querySelector('#id_start_date').value = toLocalISOString(event.start);
                             editEventForm.querySelector('#id_end_date').value = event.end ? toLocalISOString(event.end) : toLocalISOString(event.start);
-                            
-                            // Check if we can add a sign-in button to the edit modal too
-                            // For now, let's use the viewEventModal for personal events too if they want to sign in
+                            // Populate priority in edit form
+                            var editPriorityEl = editEventForm.querySelector('#id_priority');
+                            if (editPriorityEl) editPriorityEl.value = props.priority || 'medium';
+
                             if (confirm('Do you want to View/Sign-in (OK) or Edit (Cancel) this personal event?')) {
                                 document.getElementById('viewEventTitle').innerText = event.title;
                                 document.getElementById('viewEventDescription').innerText = props.description || '';
                                 document.getElementById('viewEventTime').innerText = moment(event.start).format('YYYY-MM-DD HH:mm') + ' - ' + moment(event.end).format('HH:mm');
-                                
+
                                 var statusEl = document.getElementById('viewEventStatus');
                                 var status = props.status || 'pending';
                                 statusEl.innerText = status.charAt(0).toUpperCase() + status.slice(1);
-                                statusEl.className = 'badge ' + (status === 'completed' ? 'bg-success' : (status === 'missed' ? 'bg-danger' : 'bg-primary'));
-                                
+                                var peBadgeClass = status === 'completed' ? 'bg-success' : status === 'missed' ? 'bg-danger' : status === 'exempt' ? 'bg-secondary' : 'bg-primary';
+                                statusEl.className = 'badge ' + peBadgeClass;
+
+                                // Show priority dot
+                                var priority = props.priority || 'medium';
+                                var priorityColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
+                                var priorityLabel = priority.charAt(0).toUpperCase() + priority.slice(1);
+                                document.getElementById('viewEventPriorityRow').style.display = '';
+                                document.getElementById('viewEventPriorityDot').style.background = priorityColor;
+                                document.getElementById('viewEventPriorityLabel').innerText = priorityLabel;
+
                                 var signInContainer = document.getElementById('signInContainer');
                                 var signedInMsg = document.getElementById('signedInMsg');
                                 var signInBtn = document.getElementById('eventSignInBtn');
@@ -425,7 +590,6 @@
                                 } else if (status === 'pending') {
                                     signInContainer.style.display = 'block';
                                     signedInMsg.style.display = 'none';
-                                    
                                     signInBtn.onclick = function() {
                                         fetch('/campus/event/signin/personal/' + event.id + '/', {
                                             method: 'POST',
@@ -433,17 +597,16 @@
                                         })
                                         .then(response => response.json())
                                         .then(data => {
-                                            if (data.status === 'success') {
-                                                location.reload();
-                                            } else {
-                                                alert('Error signing in: ' + data.message);
-                                            }
+                                            if (data.status === 'success') { location.reload(); }
+                                            else { alert('Error signing in: ' + data.message); }
                                         });
                                     };
                                 } else {
                                     signInContainer.style.display = 'none';
                                     signedInMsg.style.display = 'none';
                                 }
+                                // Load comments for personal event
+                                loadComments('studentpersonalevent', event.id);
                                 new bootstrap.Modal(document.getElementById('viewEventModal')).show();
                             } else {
                                 editEventModal.show();
@@ -465,6 +628,48 @@
                     }
 				});
 				calendar.render();
+
+                // Recurrence Fields Toggle Logic
+                function findFieldRow(form, name) {
+                    const el = form.querySelector('[name="' + name + '"]');
+                    if (!el) return null;
+                    return el.closest('.mb-3') || el.closest('.form-group') || el.parentElement;
+                }
+                function toggleRecurrenceFields(form) {
+                    const patternEl = form.querySelector('[name="recurrence_pattern"]');
+                    if (!patternEl) return;
+                    const pattern = patternEl.value;
+                    const endTypeRow = findFieldRow(form, 'recurrence_end_type');
+                    const countRow   = findFieldRow(form, 'recurrence_count');
+                    const endDateRow = findFieldRow(form, 'recurrence_end_date');
+                    if (!endTypeRow || !countRow || !endDateRow) return;
+
+                    if (pattern === 'none') {
+                        endTypeRow.style.display = 'none';
+                        countRow.style.display = 'none';
+                        endDateRow.style.display = 'none';
+                    } else {
+                        endTypeRow.style.display = 'block';
+                        const endTypeEl = form.querySelector('[name="recurrence_end_type"]');
+                        const endType = endTypeEl ? endTypeEl.value : 'count';
+                        if (endType === 'count') {
+                            countRow.style.display = 'block';
+                            endDateRow.style.display = 'none';
+                        } else if (endType === 'date') {
+                            countRow.style.display = 'none';
+                            endDateRow.style.display = 'block';
+                        } else {
+                            countRow.style.display = 'none';
+                            endDateRow.style.display = 'none';
+                        }
+                    }
+                }
+
+                [addEventForm, editEventForm].forEach(form => {
+                    form.querySelector('[name="recurrence_pattern"]').addEventListener('change', () => toggleRecurrenceFields(form));
+                    form.querySelector('[name="recurrence_end_type"]').addEventListener('change', () => toggleRecurrenceFields(form));
+                    toggleRecurrenceFields(form); // Initial call
+                });
 
                 // Handle ADD form submission
                 document.getElementById('saveEventBtn').addEventListener('click', function() {
@@ -547,7 +752,109 @@
                         .catch(error => console.error('Error:', error));
                     }
                 });
+
+                // Handle submit comment
+                document.getElementById('submit-comment-btn').addEventListener('click', function() {
+                    if (!currentCommentTarget) return;
+                    var text = document.getElementById('new-comment-text').value.trim();
+                    var errEl = document.getElementById('comment-error');
+                    errEl.style.display = 'none';
+                    if (!text) {
+                        errEl.textContent = 'Comment cannot be empty.';
+                        errEl.style.display = '';
+                        return;
+                    }
+                    var formData = new FormData();
+                    formData.append('content', text);
+                    fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'X-CSRFToken': csrfComments }
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            document.getElementById('new-comment-text').value = '';
+                            loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+                        } else {
+                            errEl.textContent = data.message || 'Error posting comment.';
+                            errEl.style.display = '';
+                        }
+                    })
+                    .catch(err => console.error('Comment submit error:', err));
+                });
 			});
 		</script>
 	</main>
+<style>
+/* Priority dot */
+.priority-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+/* Holiday / exam-week day-cell label */
+.holiday-label {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(100, 100, 100, 0.75);
+    border-radius: 3px;
+    padding: 1px 3px;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 2;
+}
+/* FullCalendar holiday background event opacity */
+.fc .holiday-bg-event {
+    opacity: 0.35;
+}
+/* Event comment styles */
+.comment-item {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-left: 3px solid #dee2e6;
+    font-size: 0.85rem;
+}
+.comment-item.pinned {
+    border-left-color: #ffc107;
+    background: #fffdf0;
+}
+.comment-item .comment-author {
+    font-weight: 600;
+    color: #343a40;
+}
+.comment-item .comment-meta {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-left: 6px;
+}
+.comment-item .comment-body {
+    margin-top: 4px;
+    color: #495057;
+    white-space: pre-wrap;
+}
+.comment-item .comment-actions {
+    margin-top: 4px;
+    display: flex;
+    gap: 6px;
+}
+.btn-xs {
+    padding: 1px 6px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    border-radius: 3px;
+}
+</style>
 	{% endblock %}

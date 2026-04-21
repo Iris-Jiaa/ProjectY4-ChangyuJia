@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'formtools',
     'django_extensions',
+    'django_celery_beat',
 ]
 
 CRISPY_TEMPLATE_PACK = 'bootstrap4'

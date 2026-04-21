@@ -50,6 +50,19 @@ class User(AbstractUser):
     def __str__(self) -> str:
         return self.username
     
+    @property
+    def is_student_user(self):
+        return hasattr(self, 'student')
+
+    @property
+    def is_faculty(self):
+        return hasattr(self, 'faculty')
+
+    @property
+    def is_admin(self):
+        # Admin is either a staff/superuser OR a faculty with position 'Admin'
+        return self.is_staff or self.is_superuser or (self.is_faculty and self.faculty.position == 'Admin')
+
     class Meta:
         ordering = ['username', 'first_name', 'last_name']
 

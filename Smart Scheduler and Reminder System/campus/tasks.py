@@ -1,70 +1,96 @@
+"""
+Celery periodic tasks for the Smart Scheduler & Reminder System.
+
+Beat schedule (every 60 s) triggers four tasks:
+  1. send_personal_event_reminders  – personal events for students & faculty
+  2. send_upcoming_lecture_notifications  – scheduled lectures
+  3. send_upcoming_meeting_notifications  – approved meeting requests
+  4. auto_judge_event_statuses  – mark past events completed / missed (every 5 min)
+"""
+
 from celery import shared_task
 from datetime import timedelta, datetime
-from django.utils import timezone
+
+from django.contrib.contenttypes.models import ContentType
 from django.core.mail import send_mail
 from django.conf import settings
-from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 
-from .models import Lecture, Notification, MeetingRequest, StudentPersonalEvent, FacultyPersonalEvent
+from .models import (
+    Holiday, Lecture, Notification,
+    MeetingRequest, StudentPersonalEvent, FacultyPersonalEvent,
+)
 
-@shared_task
-def send_personal_event_reminders():
-    now = timezone.now()
-    
-    # We add a buffer of 1 day to ensure we don't miss any events
-    # and also to handle long-running tasks.
-    student_events = StudentPersonalEvent.objects.filter(start_date__gte=now, start_date__lte=now + timedelta(days=1))
-    faculty_events = FacultyPersonalEvent.objects.filter(start_date__gte=now, start_date__lte=now + timedelta(days=1))
+# ── Shared reminder window definitions ───────────────────────────────────────
+# Each entry: pref_key → (lower_bound, upper_bound, human description)
+# The task runs every 60 s; windows are ±30 s around the nominal offset so
+# exactly one task tick falls inside each window.
 
-    events = list(student_events) + list(faculty_events)
+REMINDER_WINDOWS = {
+    '60min':   (timedelta(minutes=59, seconds=30), timedelta(minutes=60, seconds=30), 'in 60 minutes'),
+    '30min':   (timedelta(minutes=29, seconds=30), timedelta(minutes=30, seconds=30), 'in 30 minutes'),
+    '15min':   (timedelta(minutes=14, seconds=30), timedelta(minutes=15, seconds=30), 'in 15 minutes'),
+    'instant': (timedelta(seconds=0),              timedelta(seconds=30),             'now'),
+}
 
-    for event in events:
-        time_until_event = event.start_date - now
+# Maximum look-ahead: slightly beyond the 60-min window so the DB query is
+# tight and doesn't pull events hours away.
+MAX_LOOKAHEAD = timedelta(hours=1, seconds=30)
 
-        user = None
-        if hasattr(event, 'student'):
-            user = event.student.student_name
-        elif hasattr(event, 'faculty'):
-            user = event.faculty.staff
 
-        if user:
-            user_preferences = [pref for pref in user.reminder_preference.split(',') if pref]
-            sent_reminders = [rem for rem in event.sent_reminders.split(',') if rem]
+def _match_window(time_until, prefs):
+    """
+    Given a timedelta and a list of preference keys, return the first
+    (pref_key, description) whose window contains *time_until*, or (None, None).
+    """
+    for pref in prefs:
+        window = REMINDER_WINDOWS.get(pref)
+        if window:
+            low, high, desc = window
+            if low <= time_until < high:
+                return pref, desc
+    return None, None
 
-            for pref in user_preferences:
-                if pref in sent_reminders:
-                    continue # Skip if a reminder for this preference has already been sent
 
-                should_send = False
-                time_description = ""
+# ── In-app / email delivery helper ───────────────────────────────────────────
 
-                if pref == '60min' and timedelta(minutes=59, seconds=30) <= time_until_event < timedelta(minutes=60, seconds=30):
-                    should_send = True
-                    time_description = "in 60 minutes"
-                elif pref == '30min' and timedelta(minutes=29, seconds=30) <= time_until_event < timedelta(minutes=30, seconds=30):
-                    should_send = True
-                    time_description = "in 30 minutes"
-                elif pref == '15min' and timedelta(minutes=14, seconds=30) <= time_until_event < timedelta(minutes=15, seconds=30):
-                    should_send = True
-                    time_description = "in 15 minutes"
-                elif pref == 'instant' and timedelta(seconds=0) <= time_until_event < timedelta(seconds=30):
-                    should_send = True
-                    time_description = "now"
+def _send_notification(user, content_object, message):
+    """
+    Create an in-app Notification and/or trigger an email.
 
-                if should_send:
-                    message = f"Reminder: Your event '{event.title}' is starting {time_description}."
-                    _send_notification(user, event, message)
-                    
-                    # Add the preference to the list of sent reminders and save the event
-                    sent_reminders.append(pref)
-                    event.sent_reminders = ",".join(sent_reminders)
-                    event.save()
+    Deduplication key: recipient + event (content_type + object_id) + message.
+    This allows multiple distinct reminders (60min, 30min, 15min, instant)
+    for the same event while still preventing the same reminder from being
+    delivered twice if the task happens to run twice in the same window.
+    """
+    content_type = ContentType.objects.get_for_model(content_object)
 
-from accounts.models import User
+    if user.notification_method in ('in_app', 'both'):
+        already_sent = Notification.objects.filter(
+            recipient=user,
+            content_type=content_type,
+            object_id=content_object.id,
+            message=message,
+        ).exists()
+        if not already_sent:
+            Notification.objects.create(
+                recipient=user,
+                message=message,
+                content_type=content_type,
+                object_id=content_object.id,
+            )
+
+    if user.notification_method in ('email', 'both'):
+        subject = f"Smart-Scheduler Reminder: {message[:70]}"
+        send_email_notification.delay(str(user.id), subject, message)
+
+
+# ── Email task ────────────────────────────────────────────────────────────────
 
 @shared_task
 def send_email_notification(user_id, subject, message):
-    """Sends an email notification to a user."""
+    """Send an email to a single user (called via .delay())."""
+    from accounts.models import User
     try:
         user = User.objects.get(id=user_id)
         send_mail(
@@ -75,170 +101,180 @@ def send_email_notification(user_id, subject, message):
             fail_silently=False,
         )
     except User.DoesNotExist:
-        # Handle case where user is not found
         pass
-    except Exception as e:
-        # Handle other potential exceptions (e.g., SMTP errors)
-        print(f"Failed to send email to user {user_id}: {e}")
+    except Exception as exc:
+        print(f"[send_email_notification] Failed for user {user_id}: {exc}")
 
 
-def _send_notification(user, content_object, message):
-    """Helper function to create an in-app notification and trigger an email if needed."""
-    content_type = ContentType.objects.get_for_model(content_object)
-    
-    # Send In-App Notification
-    if user.notification_method in ['in_app', 'both']:
-        if not Notification.objects.filter(recipient=user, content_type=content_type, object_id=content_object.id).exists():
-            Notification.objects.create(
-                recipient=user,
-                message=message,
-                content_type=content_type,
-                object_id=content_object.id,
-            )
+# ── Personal-event reminders ─────────────────────────────────────────────────
 
-    # Send Email Notification
-    if user.notification_method in ['email', 'both']:
-        subject = f"Smart-Scheduler Reminder: {message[:50]}..."
-        send_email_notification.delay(user.id, subject, message)
+@shared_task
+def send_personal_event_reminders():
+    now = timezone.now()
+    horizon = now + MAX_LOOKAHEAD
 
+    student_events = (
+        StudentPersonalEvent.objects
+        .filter(start_date__gte=now, start_date__lte=horizon, status='pending')
+        .select_related('student__student_name')
+    )
+    faculty_events = (
+        FacultyPersonalEvent.objects
+        .filter(start_date__gte=now, start_date__lte=horizon, status='pending')
+        .select_related('faculty__staff')
+    )
+
+    for event in list(student_events) + list(faculty_events):
+        time_until = event.start_date - now
+
+        # Resolve the owning user
+        if hasattr(event, 'student'):
+            user = event.student.student_name
+        elif hasattr(event, 'faculty'):
+            user = event.faculty.staff
+        else:
+            continue
+
+        prefs = [p.strip() for p in user.reminder_preference.split(',') if p.strip()]
+        sent  = [r.strip() for r in (event.sent_reminders or '').split(',') if r.strip()]
+
+        pref_key, desc = _match_window(time_until, prefs)
+        if not pref_key or pref_key in sent:
+            continue
+
+        message = f"Reminder: Your event '{event.title}' is starting {desc}."
+        _send_notification(user, event, message)
+
+        # Persist sent_reminders without triggering full_clean / conflict checks
+        sent.append(pref_key)
+        type(event).objects.filter(pk=event.pk).update(sent_reminders=','.join(sent))
+
+
+# ── Lecture reminders ─────────────────────────────────────────────────────────
 
 @shared_task
 def send_upcoming_lecture_notifications():
+    from accounts.models import User
+
     now = timezone.now()
-    
-    lectures = Lecture.objects.filter(
-        lecture_date=now.date(), 
-        start_time__gte=now.time()
-    ).select_related('lecturer__staff', 'unit_name')
+
+    # Only look at lectures that start today and haven't passed
+    lectures = (
+        Lecture.objects
+        .filter(lecture_date=now.date(), status='scheduled')
+        .select_related('lecturer__staff', 'unit_name__course')
+    )
 
     for lecture in lectures:
-        lecture_start_datetime = timezone.make_aware(
+        lecture_start = timezone.make_aware(
             datetime.combine(lecture.lecture_date, lecture.start_time)
         )
-        time_until_lecture = lecture_start_datetime - now
+        time_until = lecture_start - now
 
-        users = []
-        if lecture.lecturer and hasattr(lecture.lecturer, 'staff'):
-            users.append(lecture.lecturer.staff)
-        
-        students = User.objects.filter(student__registeredunit__unit=lecture.unit_name)
-        users.extend(students)
+        # Skip if outside the maximum look-ahead window or already started
+        if not (timedelta(0) <= time_until <= MAX_LOOKAHEAD):
+            continue
 
-        for user in set(users):
-            # User preferences can contain multiple values, e.g., "60min,15min"
-            user_preferences = user.reminder_preference.split(',')
+        # Build participant list: the lecturer + all registered students
+        users = set()
+        if lecture.lecturer and lecture.lecturer.staff:
+            users.add(lecture.lecturer.staff)
 
-            for pref in user_preferences:
-                message = ""
-                should_send = False
+        registered_students = User.objects.filter(
+            student__registeredunit__unit=lecture.unit_name
+        )
+        users.update(registered_students)
 
-                if pref == '60min' and timedelta(minutes=59, seconds=30) <= time_until_lecture < timedelta(minutes=60, seconds=30):
-                    message = f"Reminder: Your course '{lecture.unit_name.course_name}' is starting in 60 minutes."
-                    should_send = True
-                elif pref == '30min' and timedelta(minutes=29, seconds=30) <= time_until_lecture < timedelta(minutes=30, seconds=30):
-                    message = f"Reminder: Your course '{lecture.unit_name.course_name}' is starting in 30 minutes."
-                    should_send = True
-                elif pref == '15min' and timedelta(minutes=14, seconds=30) <= time_until_lecture < timedelta(minutes=15, seconds=30):
-                    message = f"Reminder: Your course '{lecture.unit_name.course_name}' is starting in 15 minutes."
-                    should_send = True
-                elif pref == 'instant' and timedelta(seconds=0) <= time_until_lecture < timedelta(seconds=30):
-                    message = f"Reminder: Your course '{lecture.unit_name.course_name}' is starting now."
-                    should_send = True
+        course_name = lecture.unit_name.course.name
 
-                if should_send:
-                    _send_notification(user, lecture, message)
+        for user in users:
+            prefs = [p.strip() for p in user.reminder_preference.split(',') if p.strip()]
+            pref_key, desc = _match_window(time_until, prefs)
+            if not pref_key:
+                continue
 
+            message = f"Reminder: Lecture '{course_name}' is starting {desc}."
+            _send_notification(user, lecture, message)
+
+
+# ── Meeting-request reminders ─────────────────────────────────────────────────
 
 @shared_task
 def send_upcoming_meeting_notifications():
     now = timezone.now()
-    
-    meetings = MeetingRequest.objects.filter(
-        status='approved',
-        start_time__gte=now,
-    ).select_related('student__student_name', 'lecturer__staff')
+    horizon = now + MAX_LOOKAHEAD
+
+    meetings = (
+        MeetingRequest.objects
+        .filter(status='approved', start_time__gte=now, start_time__lte=horizon)
+        .select_related('student__student_name', 'lecturer__staff')
+    )
 
     for meeting in meetings:
-        time_until_meeting = meeting.start_time - now
+        time_until = meeting.start_time - now
 
         participants = []
-        if hasattr(meeting, 'student') and hasattr(meeting.student, 'student_name'):
-             participants.append(meeting.student.student_name)
-        if hasattr(meeting, 'lecturer') and hasattr(meeting.lecturer, 'staff'):
+        if meeting.student and meeting.student.student_name:
+            participants.append(meeting.student.student_name)
+        if meeting.lecturer and meeting.lecturer.staff:
             participants.append(meeting.lecturer.staff)
 
         for user in participants:
-            other_participant_name = ""
-            if hasattr(user, 'is_student') and user.is_student:
-                other_participant_name = meeting.lecturer.staff.get_full_name()
+            prefs = [p.strip() for p in user.reminder_preference.split(',') if p.strip()]
+            pref_key, desc = _match_window(time_until, prefs)
+            if not pref_key:
+                continue
+
+            # Address the notification to "the other party"
+            if user.is_student:
+                other = meeting.lecturer.staff.get_full_name()
             else:
-                if hasattr(meeting.student, 'student_name'):
-                    other_participant_name = meeting.student.student_name.get_full_name()
+                other = meeting.student.student_name.get_full_name()
 
-            user_preferences = user.reminder_preference.split(',')
+            message = f"Reminder: Meeting '{meeting.title}' with {other} is starting {desc}."
+            _send_notification(user, meeting, message)
 
-            for pref in user_preferences:
-                should_send = False
-                time_description = ""
 
-                if pref == '60min' and timedelta(minutes=59, seconds=30) <= time_until_meeting < timedelta(minutes=60, seconds=30):
-                    should_send = True
-                    time_description = "in 60 minutes"
-                elif pref == '30min' and timedelta(minutes=29, seconds=30) <= time_until_meeting < timedelta(minutes=30, seconds=30):
-                    should_send = True
-                    time_description = "in 30 minutes"
-                elif pref == '15min' and timedelta(minutes=14, seconds=30) <= time_until_meeting < timedelta(minutes=15, seconds=30):
-                    should_send = True
-                    time_description = "in 15 minutes"
-                elif pref == 'instant' and timedelta(seconds=0) <= time_until_meeting < timedelta(seconds=30):
-                    should_send = True
-                    time_description = "now"
-
-                if should_send:
-                    message = f"Reminder: You have a meeting with {other_participant_name} titled '{meeting.title}' starting {time_description}."
-                    _send_notification(user, meeting, message)
-
+# ── Auto-judge event statuses (runs every 5 min) ──────────────────────────────
 
 @shared_task
 def auto_judge_event_statuses():
     now = timezone.now()
-    
+
+    def _is_holiday(date):
+        return Holiday.objects.filter(start_date__lte=date, end_date__gte=date).exists()
+
     # 1. Lectures
-    # Lectures use lecture_date and end_time (TimeField)
-    # We need to combine them to compare with 'now'
-    lectures = Lecture.objects.filter(status='scheduled')
-    for lecture in lectures:
-        end_datetime = timezone.make_aware(datetime.combine(lecture.lecture_date, lecture.end_time))
-        if end_datetime < now:
-            if lecture.total_students > 0 or lecture.is_attending:
-                lecture.status = 'completed'
-            else:
-                lecture.status = 'missed'
-            lecture.save()
+    for lecture in Lecture.objects.filter(status='scheduled'):
+        if _is_holiday(lecture.lecture_date):
+            Lecture.objects.filter(pk=lecture.pk).update(status='exempt')
+            continue
+        end_dt = timezone.make_aware(datetime.combine(lecture.lecture_date, lecture.end_time))
+        if end_dt < now:
+            new_status = 'completed' if (lecture.total_students > 0 or lecture.is_attending) else 'missed'
+            Lecture.objects.filter(pk=lecture.pk).update(status=new_status)
 
-    # 2. Student Personal Events
-    student_events = StudentPersonalEvent.objects.filter(status='pending', end_date__lt=now)
-    for event in student_events:
-        if event.is_signed_in:
-            event.status = 'completed'
-        else:
-            event.status = 'missed'
-        event.save()
+    # 2. Student personal events
+    for event in StudentPersonalEvent.objects.filter(status='pending'):
+        if _is_holiday(event.start_date.date()):
+            StudentPersonalEvent.objects.filter(pk=event.pk).update(status='exempt')
+            continue
+        if event.end_date < now:
+            new_status = 'completed' if event.is_signed_in else 'missed'
+            StudentPersonalEvent.objects.filter(pk=event.pk).update(status=new_status)
 
-    # 3. Faculty Personal Events
-    faculty_events = FacultyPersonalEvent.objects.filter(status='pending', end_date__lt=now)
-    for event in faculty_events:
-        if event.is_signed_in:
-            event.status = 'completed'
-        else:
-            event.status = 'missed'
-        event.save()
+    # 3. Faculty personal events
+    for event in FacultyPersonalEvent.objects.filter(status='pending'):
+        if _is_holiday(event.start_date.date()):
+            FacultyPersonalEvent.objects.filter(pk=event.pk).update(status='exempt')
+            continue
+        if event.end_date < now:
+            new_status = 'completed' if event.is_signed_in else 'missed'
+            FacultyPersonalEvent.objects.filter(pk=event.pk).update(status=new_status)
 
-    # 4. Meeting Requests
-    meetings = MeetingRequest.objects.filter(status__in=['approved', 'pending'], end_time__lt=now)
-    for meeting in meetings:
-        if meeting.is_signed_in:
-            meeting.status = 'completed'
-        else:
-            meeting.status = 'missed'
-        meeting.save()
+    # 4. Meeting requests
+    for meeting in MeetingRequest.objects.filter(
+        status__in=('approved', 'pending'), end_time__lt=now
+    ):
+        new_status = 'completed' if meeting.is_signed_in else 'missed'
+        MeetingRequest.objects.filter(pk=meeting.pk).update(status=new_status)
