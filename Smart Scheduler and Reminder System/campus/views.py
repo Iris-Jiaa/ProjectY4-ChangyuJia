@@ -484,9 +484,11 @@ class StudentsUnitsRegistrationView(View):
 
     def post(self, request, student_id, *args, **kwargs):
         get_unit_field = request.POST.get('register-unit')
-
-        unit_obj = BookedUnit.objects.get(id=get_unit_field)
+        if not get_unit_field:
+            messages.warning(request, 'Please select a unit to register.')
+            return redirect('unit_registration', student_id)
         try:
+            unit_obj = BookedUnit.objects.get(id=get_unit_field)
             get_reg_unit = RegisteredUnit.objects.filter(unit=unit_obj).exists()
             if get_reg_unit is True:
                 messages.warning(request, 'Selected unit already registered!')
@@ -504,6 +506,9 @@ class StudentsUnitsRegistrationView(View):
                 else:
                     messages.success(request, 'Unit successfully registered!')
                 return redirect('unit_registration', student_id)
+        except BookedUnit.DoesNotExist:
+            messages.error(request, 'Selected unit not found.')
+            return redirect('unit_registration', student_id)
         except RegisteredUnit.DoesNotExist:
             messages.error(request, 'Unknown error occured! Contact system administrator')
             return redirect('unit_registration', student_id)
@@ -1286,6 +1291,18 @@ class EditMeetingRequestView(View):
                 modified_request = form.save(commit=False)
                 modified_request.status = 'modified'
                 modified_request.save()
+                # Notify student of the proposed change
+                Notification.objects.create(
+                    recipient=meeting_request.student.student_name,
+                    message=(
+                        f'Your meeting request "{meeting_request.title}" has been modified by '
+                        f'{request.user.get_full_name() or request.user.username}. '
+                        f'New time: {modified_request.start_time.strftime("%d %b %Y %H:%M")} – '
+                        f'{modified_request.end_time.strftime("%H:%M")}. Please review and accept or reject.'
+                    ),
+                    content_type=ContentType.objects.get_for_model(meeting_request),
+                    object_id=meeting_request.id,
+                )
                 messages.success(request, 'Meeting request has been modified and sent to the student for approval.')
                 return redirect('manage_meeting_requests')
             
@@ -1304,6 +1321,17 @@ def accept_meeting_request(request, request_id):
         meeting_request = MeetingRequest.objects.get(id=request_id, student=request.user.student)
         meeting_request.status = 'approved'
         meeting_request.save()
+        # Notify lecturer
+        Notification.objects.create(
+            recipient=meeting_request.lecturer.staff,
+            message=(
+                f'{request.user.get_full_name() or request.user.username} has accepted your proposed '
+                f'meeting time for "{meeting_request.title}" on '
+                f'{meeting_request.start_time.strftime("%d %b %Y %H:%M")}.'
+            ),
+            content_type=ContentType.objects.get_for_model(meeting_request),
+            object_id=meeting_request.id,
+        )
         messages.success(request, 'Meeting request has been accepted.')
     except MeetingRequest.DoesNotExist:
         messages.error(request, 'Meeting request not found.')
@@ -1315,6 +1343,16 @@ def reject_modified_meeting_request(request, request_id):
         meeting_request = MeetingRequest.objects.get(id=request_id, student=request.user.student)
         meeting_request.status = 'rejected'
         meeting_request.save()
+        # Notify lecturer
+        Notification.objects.create(
+            recipient=meeting_request.lecturer.staff,
+            message=(
+                f'{request.user.get_full_name() or request.user.username} has rejected your proposed '
+                f'meeting time for "{meeting_request.title}". You may suggest a new time.'
+            ),
+            content_type=ContentType.objects.get_for_model(meeting_request),
+            object_id=meeting_request.id,
+        )
         messages.success(request, 'Meeting request has been rejected.')
     except MeetingRequest.DoesNotExist:
         messages.error(request, 'Meeting request not found.')
