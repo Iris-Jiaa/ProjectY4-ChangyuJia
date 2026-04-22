@@ -143,12 +143,25 @@ class StudentHomepageView(View):
             'lecture_hall'
         ).order_by('lecture_date', 'start_time', 'unit_name__course__name')
 
-        # Debug print statements
-        print("--- Debugging scheduled_lectures_QS ---")
-        for lec in scheduled_lectures_QS:
-            print(f"Lecture ID: '{lec.id}', is_attending: {lec.is_attending}")
-        print("--- End Debugging ---")
-
+        # Auto-mark missed lectures: if end_time has passed and student hasn't signed in
+        now_dt = timezone.now()
+        for lecture in scheduled_lectures_QS:
+            if lecture.status == 'scheduled' and not lecture.is_attending:
+                end_dt = timezone.make_aware(
+                    dt.combine(lecture.lecture_date, lecture.end_time)
+                )
+                if end_dt < now_dt:
+                    Lecture.objects.filter(pk=lecture.pk).update(status='missed')
+                    absent_msg = f"You were marked absent for '{lecture.unit_name.course.name}' on {lecture.lecture_date.strftime('%d %b %Y')}."
+                    if not Notification.objects.filter(recipient=request.user, message=absent_msg).exists():
+                        Notification.objects.create(
+                            recipient=request.user,
+                            message=absent_msg,
+                            content_type=ContentType.objects.get_for_model(lecture),
+                            object_id=lecture.pk,
+                        )
+        # Re-fetch after status updates
+        scheduled_lectures_QS = scheduled_lectures_QS.all()
 
         # check for lectures before current date
         past_lectures_qs = Lecture.objects.filter(is_taught=False, lecture_date__lte=current_date)
