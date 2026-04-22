@@ -158,6 +158,27 @@
 							</div>
 						</div>
 					</div>
+
+					<div class="card">
+						<div class="card-body">
+							<h5 class="card-title">Recommended Actions <span class="text-muted small">| Units to Schedule</span></h5>
+							<div class="activity">
+								{% for unit in units_to_schedule %}
+								<div class="activity-item d-flex align-items-start mb-2">
+									<div class="activity-content w-100">
+										<div class="d-flex justify-content-between align-items-center">
+											<span class="fw-semibold small">{{ unit.course.name }}</span>
+											<a href="{% url 'schedule_lecture_list' staff_id=request.user.faculty.id staff_name=request.user.faculty %}" class="badge bg-warning text-dark text-decoration-none">Schedule</a>
+										</div>
+										<p class="text-muted mb-0" style="font-size:0.78rem;">No lectures in the next 30 days</p>
+									</div>
+								</div>
+								{% empty %}
+								<p class="text-center text-muted small py-2">All your units have upcoming lectures scheduled.</p>
+								{% endfor %}
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</section>

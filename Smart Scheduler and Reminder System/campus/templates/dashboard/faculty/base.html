@@ -123,7 +123,18 @@
                     <i class="bi-person-video3"></i><span>Assign units</span>
                 </a>
             </li>
-            {% endif %}            <li class="nav-item">
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'admin_all_courses' %}">
+                    <i class="bi-journal-text"></i><span>All Courses</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'admin_holidays' %}">
+                    <i class="bi-calendar-x-fill"></i><span>Holiday Management</span>
+                </a>
+            </li>
+            {% endif %}
+            <li class="nav-item">
                 <a class="nav-link" href="{% url 'schedule_lecture_list' staff_id=request.user.faculty.id staff_name=request.user.faculty %}">
                     <i class="bi-alarm-fill"></i><span>Schedule lecture</span>
                 </a>
@@ -131,6 +142,16 @@
             <li class="nav-item">
                 <a class="nav-link" href="{% url 'view_faculty_lectures' staff_id=request.user.faculty.id staff_name=request.user.faculty %}">
                     <i class="bi-collection-fill"></i><span>Lecture records</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'manage_meeting_requests' %}">
+                    <i class="bi bi-people-fill"></i><span>Meeting Requests</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'personal_report' %}">
+                    <i class="bi bi-bar-chart-fill"></i><span>Personal Reports</span>
                 </a>
             </li>
             <li><hr class="dropdown-divider"></li>

@@ -184,6 +184,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     'auto-judge-event-statuses': {
         'task': 'campus.tasks.auto_judge_event_statuses',
-        'schedule': 300.0, # Run every 5 minutes
+        'schedule': 300.0,
     },
-    }
+    'check-attendance-warnings': {
+        'task': 'campus.tasks.check_attendance_warnings',
+        'schedule': 86400.0,  # Run once every 24 hours
+    },
+}

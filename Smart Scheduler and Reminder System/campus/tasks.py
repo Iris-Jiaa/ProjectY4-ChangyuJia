@@ -19,6 +19,7 @@ from django.utils import timezone
 from .models import (
     Holiday, Lecture, Notification,
     MeetingRequest, StudentPersonalEvent, FacultyPersonalEvent,
+    RegisteredUnit,
 )
 
 # ── Shared reminder window definitions ───────────────────────────────────────
@@ -278,3 +279,62 @@ def auto_judge_event_statuses():
     ):
         new_status = 'completed' if meeting.is_signed_in else 'missed'
         MeetingRequest.objects.filter(pk=meeting.pk).update(status=new_status)
+
+
+# ── Attendance warning (runs once daily) ─────────────────────────────────────
+
+ATTENDANCE_THRESHOLD = 0.75
+ATTENDANCE_MIN_LECTURES = 3   # don't warn until at least 3 lectures have been held
+
+
+@shared_task
+def check_attendance_warnings():
+    """
+    For every registered unit, calculate the student's attendance rate.
+    If it falls below ATTENDANCE_THRESHOLD and hasn't been warned in the
+    last 7 days, send an in-app (and optionally email) notification.
+    """
+    week_ago = timezone.now() - timedelta(days=7)
+
+    registrations = (
+        RegisteredUnit.objects
+        .filter(is_registered=True)
+        .select_related('student__student_name', 'unit__course')
+    )
+
+    for reg in registrations:
+        student = reg.student
+        booked_unit = reg.unit
+        user = student.student_name
+
+        finalized = Lecture.objects.filter(
+            student=student,
+            unit_name=booked_unit,
+            status__in=('completed', 'missed'),
+        )
+        total = finalized.count()
+        if total < ATTENDANCE_MIN_LECTURES:
+            continue
+
+        attended = finalized.filter(is_attending=True).count()
+        rate = attended / total
+
+        if rate >= ATTENDANCE_THRESHOLD:
+            continue
+
+        course_name = booked_unit.course.name
+        message = (
+            f"Attendance Warning: Your attendance for '{course_name}' is "
+            f"{int(rate * 100)}% — below the required 75%. "
+            f"Please attend more classes to avoid academic penalties."
+        )
+
+        # Send at most once per 7 days per unit per student
+        already_warned = Notification.objects.filter(
+            recipient=user,
+            message__startswith=f"Attendance Warning: Your attendance for '{course_name}'",
+            date_created__gte=week_ago,
+        ).exists()
+
+        if not already_warned:
+            _send_notification(user, booked_unit, message)

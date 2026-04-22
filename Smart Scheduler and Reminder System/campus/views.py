@@ -198,6 +198,16 @@ class StudentHomepageView(View):
         # Detect conflicts
         conflicts = check_student_conflicts(request.user.student)
 
+        # Smart recommendations: courses available for this student's profile not yet registered
+        registered_unit_ids = RegisteredUnit.objects.filter(
+            student=request.user.student
+        ).values_list('unit_id', flat=True)
+        recommended_units = BookedUnit.objects.filter(
+            students_course=request.user.student.course,
+            year_of_study=request.user.student.year,
+            semester=request.user.student.semester,
+        ).exclude(id__in=registered_unit_ids).select_related('course', 'lecturer__staff')[:5]
+
         context = {
             'TotalUnits': total_units,
             'TotalLectures': total_lectures,
@@ -206,6 +216,7 @@ class StudentHomepageView(View):
             'personal_event_form': StudentPersonalEventForm(),
             'modified_requests': modified_requests,
             'conflicts': conflicts,
+            'recommended_units': recommended_units,
         }
         return render(request, self.template_name, context)
 
@@ -659,12 +670,25 @@ class FacultyDashboardView(View):
                 'borderColor': '#f56954',
             })
 
+        # Smart recommendations: faculty's units with no upcoming lectures in the next 30 days
+        from datetime import date, timedelta as td
+        today = date.today()
+        upcoming_cutoff = today + td(days=30)
+        all_booked = BookedUnit.objects.filter(lecturer=request.user.faculty).select_related('course')
+        units_to_schedule = [
+            u for u in all_booked
+            if not Lecture.objects.filter(
+                unit_name=u, lecture_date__gte=today, lecture_date__lte=upcoming_cutoff
+            ).exists()
+        ][:5]
+
         context = {
             'TotalBookedUnits': total_booked_units,
             'scheduled_lectures': scheduled_lectures_QS,
             'events': json.dumps(lecture_events),
             'pending_requests_count': pending_requests_count,
             'personal_event_form': FacultyPersonalEventForm(),
+            'units_to_schedule': units_to_schedule,
         }
         return render(request, self.template_name, context)
 
