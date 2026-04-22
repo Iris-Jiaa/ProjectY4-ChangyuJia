@@ -955,7 +955,15 @@ class AssignUnitsforLecturersView(View):
             course_names = [name.strip() for name in form.cleaned_data['courses'].split(',') if name.strip()]
 
             for course_name in course_names:
-                course, created = Course.objects.get_or_create(name=course_name, defaults={'code': course_name[:10].upper()}) # Assuming code can be auto-generated or handled otherwise if not provided. You might need to adjust this logic for creating new courses.
+                try:
+                    course = Course.objects.get(name=course_name)
+                except Course.DoesNotExist:
+                    base_code = course_name[:10].upper()
+                    code, suffix = base_code, 1
+                    while Course.objects.filter(code=code).exists():
+                        code = f"{base_code[:8]}{suffix:02d}"
+                        suffix += 1
+                    course = Course.objects.create(name=course_name, code=code)
                 
                 # Check if a similar BookedUnit already exists to prevent duplicates
                 existing_booked_unit = BookedUnit.objects.filter(
