@@ -13,6 +13,7 @@ from datetime import time, datetime as dt, timedelta
 import json
 import random
 from django.utils import timezone # Added for IntegrityError fix
+from django.core.exceptions import ValidationError
 from .utils import check_student_conflicts, create_recurring_instances # Import the conflict detection and recurrence utility
 
 
@@ -733,25 +734,33 @@ def approve_meeting_request(request, request_id):
         meeting_request.lecturer_remarks = remarks or None
         meeting_request.save()
 
-        # Create a personal event for the student
-        StudentPersonalEvent.objects.create(
-            student=meeting_request.student,
-            title=f"Meeting with {meeting_request.lecturer.staff.first_name} {meeting_request.lecturer.staff.last_name}",
-            description=meeting_request.description,
-            start_date=meeting_request.start_time,
-            end_date=meeting_request.end_time,
-        )
+        # Create personal events — catch time conflicts gracefully
+        student_conflict = False
+        faculty_conflict = False
 
-        # Create a personal event for the faculty
-        FacultyPersonalEvent.objects.create(
-            faculty=meeting_request.lecturer,
-            title=f"Meeting with {meeting_request.student.student_name}",
-            description=meeting_request.description,
-            start_date=meeting_request.start_time,
-            end_date=meeting_request.end_time,
-        )
+        try:
+            StudentPersonalEvent.objects.create(
+                student=meeting_request.student,
+                title=f"Meeting with {meeting_request.lecturer.staff.first_name} {meeting_request.lecturer.staff.last_name}",
+                description=meeting_request.description,
+                start_date=meeting_request.start_time,
+                end_date=meeting_request.end_time,
+            )
+        except ValidationError:
+            student_conflict = True
 
-        # Notify student with result and any remarks
+        try:
+            FacultyPersonalEvent.objects.create(
+                faculty=meeting_request.lecturer,
+                title=f"Meeting with {meeting_request.student.student_name}",
+                description=meeting_request.description,
+                start_date=meeting_request.start_time,
+                end_date=meeting_request.end_time,
+            )
+        except ValidationError:
+            faculty_conflict = True
+
+        # Notify student
         note_suffix = f' Lecturer note: "{remarks}"' if remarks else ''
         Notification.objects.create(
             recipient=meeting_request.student.student_name,
@@ -762,9 +771,24 @@ def approve_meeting_request(request, request_id):
                 f'{meeting_request.end_time.strftime("%H:%M")} at {meeting_request.location}.'
                 f'{note_suffix}'
             ),
-            content_object=meeting_request,
+            content_type=ContentType.objects.get_for_model(meeting_request),
+            object_id=meeting_request.id,
         )
-        messages.success(request, 'Meeting request approved and student notified.')
+
+        if student_conflict or faculty_conflict:
+            who = []
+            if student_conflict:
+                who.append("student")
+            if faculty_conflict:
+                who.append("lecturer")
+            messages.warning(
+                request,
+                f'Meeting approved, but a calendar event could not be created for the '
+                f'{" and ".join(who)} due to a time conflict with an existing event.'
+            )
+        else:
+            messages.success(request, 'Meeting request approved and student notified.')
+
     except MeetingRequest.DoesNotExist:
         messages.error(request, 'Meeting request not found.')
     return redirect('manage_meeting_requests')
