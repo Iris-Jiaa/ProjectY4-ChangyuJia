@@ -270,8 +270,12 @@ def get_personal_events(request):
         'high':   '#dc3545',  # red
     }
     event_data = []
+    now = timezone.now()
     if request.user.is_student:
-        events = StudentPersonalEvent.objects.filter(student=request.user.student)
+        events = StudentPersonalEvent.objects.filter(
+            student=request.user.student,
+            end_date__gte=now,
+        )
         for event in events:
             color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
@@ -287,7 +291,10 @@ def get_personal_events(request):
                 'borderColor': color,
             })
     elif hasattr(request.user, 'faculty'):
-        events = FacultyPersonalEvent.objects.filter(faculty=request.user.faculty)
+        events = FacultyPersonalEvent.objects.filter(
+            faculty=request.user.faculty,
+            end_date__gte=now,
+        )
         for event in events:
             color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
@@ -424,6 +431,13 @@ def request_meeting(request, lecturer_id):
                 meeting_request.student = request.user.student
                 meeting_request.lecturer = lecturer
                 meeting_request.save()
+                student_name = request.user.get_full_name() or request.user.username
+                Notification.objects.create(
+                    recipient=lecturer.staff,
+                    message=f"New meeting request from {student_name}: '{meeting_request.title}'.",
+                    content_type=ContentType.objects.get_for_model(meeting_request),
+                    object_id=meeting_request.id,
+                )
                 return JsonResponse({'status': 'success', 'message': 'Meeting request submitted successfully.'})
             except Faculty.DoesNotExist:
                 return JsonResponse({'status': 'error', 'message': 'Lecturer not found.'})
@@ -1330,7 +1344,14 @@ def get_unread_notifications(request):
 @login_required(login_url='login')
 def unread_notifications_api(request):
     unread_notifications = Notification.objects.filter(recipient=request.user, is_read=False).order_by('-date_created')
-    notifications_data = [{'id': n.id, 'message': n.message} for n in unread_notifications]
+    notifications_data = [
+        {
+            'id': n.id,
+            'message': n.message,
+            'date_created': n.date_created.isoformat(),
+        }
+        for n in unread_notifications
+    ]
     return JsonResponse({
         'count': unread_notifications.count(),
         'notifications': notifications_data

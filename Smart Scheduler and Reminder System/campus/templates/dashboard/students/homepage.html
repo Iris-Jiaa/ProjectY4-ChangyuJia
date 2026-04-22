@@ -126,7 +126,11 @@
 													<td>{{ lecture.lecture_date|date:"D d-M-Y" }}</td>
 													<td>{{ lecture.start_time|date:"H:i" }} - {{ lecture.end_time|date:"H:i" }} HRS</td>
 													<td>
-														{% if lecture.is_attending is False %}
+														{% if lecture.status == 'missed' %}
+															<span class="badge bg-secondary">Absent</span>
+														{% elif lecture.status == 'exempt' %}
+															<span class="badge bg-warning text-dark">Exempt</span>
+														{% elif lecture.is_attending is False and lecture.status == 'scheduled' %}
 														<a href="{% url 'confirm_attendance' lecture.id request.user.student.id %}">
 															<span class="badge bg-danger"><i class="bi-exclamation-triangle-fill"></i> Click me</span>
 														</a>
