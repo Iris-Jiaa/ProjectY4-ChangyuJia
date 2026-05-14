@@ -195,7 +195,7 @@
 						<div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <h5 class="card-title mb-0">Calendar</h5>
-                                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEventModal">
+                                <button type="button" class="btn btn-primary btn-sm" id="openAddEventBtn">
                                     <i class="bi bi-plus-circle"></i> Add Event
                                 </button>
                             </div>
@@ -238,104 +238,6 @@
 			</div>
 		</section>
 
-        <!-- Add Event Modal -->
-        <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="addEventModalLabel">Add Personal Event</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="addEventForm">
-                            {% csrf_token %}
-                            {{ personal_event_form|crispy }}
-                            <div id="add-form-errors" class="text-danger mt-2"></div>
-                        </form>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-primary" id="saveEventBtn">Save Event</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Edit Event Modal -->
-        <div class="modal fade" id="editEventModal" tabindex="-1" aria-labelledby="editEventModalLabel" aria-hidden="true" 
-             data-update-url-template="{% url 'update_personal_event' '0' %}" 
-             data-delete-url-template="{% url 'delete_personal_event' '0' %}">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="editEventModalLabel">Edit Personal Event</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="editEventForm">
-                            {% csrf_token %}
-                            <input type="hidden" id="edit_event_id" name="event_id">
-                            {{ personal_event_form|crispy }}
-                            <div id="edit-form-errors" class="text-danger mt-2"></div>
-                        </form>
-                    </div>
-                    <div class="modal-footer justify-content-between">
-                        <button type="button" class="btn btn-danger" id="deleteEventBtn">Delete</button>
-                        <div>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                            <button type="button" class="btn btn-primary" id="updateEventBtn">Update Event</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-		
-        <!-- View Event Modal -->
-        <div class="modal fade" id="viewEventModal" tabindex="-1" aria-labelledby="viewEventModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="viewEventModalLabel">Event Details</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <h4 id="viewEventTitle"></h4>
-                        <p id="viewEventDescription"></p>
-                        <p><strong>Time:</strong> <span id="viewEventTime"></span></p>
-                        <p><strong>Status:</strong> <span id="viewEventStatus" class="badge"></span></p>
-                        <p id="viewEventPriorityRow" style="display:none"><strong>Priority:</strong> <span id="viewEventPriorityDot" class="priority-dot"></span> <span id="viewEventPriorityLabel"></span></p>
-                        <div id="signInContainer" class="mt-3" style="display: none;">
-                            <button type="button" class="btn btn-success w-100" id="eventSignInBtn">
-                                <i class="bi bi-check-circle"></i> Sign In / Confirm Attendance
-                            </button>
-                        </div>
-                        <div id="signedInMsg" class="alert alert-success mt-3" style="display: none;">
-                            <i class="bi bi-check-circle-fill"></i> You have signed in to this event.
-                        </div>
-                        <!-- Comment Section -->
-                        <hr class="my-3">
-                        <div id="event-comments-section">
-                            <h6 class="d-flex align-items-center gap-2">
-                                <i class="bi bi-chat-left-text"></i> Announcements &amp; Notes
-                                <span id="comment-pinned-count" class="badge bg-warning text-dark" style="display:none"></span>
-                            </h6>
-                            <div id="comments-list" class="mb-2" style="max-height:220px;overflow-y:auto;"></div>
-                            <div class="input-group input-group-sm">
-                                <textarea id="new-comment-text" class="form-control" rows="2" placeholder="Add a note…" style="resize:none;"></textarea>
-                                <button class="btn btn-outline-primary" type="button" id="submit-comment-btn">
-                                    <i class="bi bi-send"></i>
-                                </button>
-                            </div>
-                            <div id="comment-error" class="text-danger small mt-1" style="display:none;"></div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
 		<script>
             // Priority helpers
             const PRIORITY_COLORS = { low: '#28a745', medium: '#fd7e14', high: '#dc3545' };
@@ -348,17 +250,19 @@
                 return k === 'csrftoken' ? decodeURIComponent(val) : v;
             }, '');
 
-            function renderComments(comments) {
-                const list = document.getElementById('comments-list');
-                const pinnedBadge = document.getElementById('comment-pinned-count');
+            function renderComments(comments, listEl, pinnedBadgeEl) {
+                const list = listEl || document.getElementById('comments-list');
+                const pinnedBadge = pinnedBadgeEl || document.getElementById('comment-pinned-count');
                 if (!comments.length) {
                     list.innerHTML = '<p class="text-muted small text-center py-2">No notes yet. Be the first to add one.</p>';
-                    pinnedBadge.style.display = 'none';
+                    if (pinnedBadge) pinnedBadge.style.display = 'none';
                     return;
                 }
                 const pinned = comments.filter(c => c.is_pinned).length;
-                if (pinned) { pinnedBadge.textContent = pinned + ' pinned'; pinnedBadge.style.display = ''; }
-                else { pinnedBadge.style.display = 'none'; }
+                if (pinnedBadge) {
+                    if (pinned) { pinnedBadge.textContent = pinned + ' pinned'; pinnedBadge.style.display = ''; }
+                    else { pinnedBadge.style.display = 'none'; }
+                }
 
                 list.innerHTML = comments.map(c => `
                     <div class="comment-item border rounded p-2 mb-1 ${c.is_pinned ? 'border-warning bg-warning bg-opacity-10' : ''}" data-id="${c.id}">
@@ -367,7 +271,7 @@
                                 ${c.is_pinned ? '<span class="badge bg-warning text-dark me-1"><i class="bi bi-pin-fill"></i> Pinned</span>' : ''}
                                 <span class="fw-semibold small">${c.author}</span>
                                 <span class="text-muted small ms-1">${c.date_created}</span>
-                                <div class="mb-0 mt-1 small markdown-body">${marked.parse(c.content)}</div>
+                                <div class="mb-0 mt-1 small markdown-body">${marked.parse(c.content.replace(/</g,'&lt;').replace(/>/g,'&gt;'))}</div>
                             </div>
                             <div class="ms-2 d-flex gap-1 flex-shrink-0">
                                 ${c.can_pin ? `<button class="btn btn-xs btn-outline-warning btn-pin-comment p-0 px-1" data-id="${c.id}" title="${c.is_pinned ? 'Unpin' : 'Pin'}"><i class="bi bi-pin${c.is_pinned ? '-fill' : ''}"></i></button>` : ''}
@@ -376,22 +280,22 @@
                         </div>
                     </div>`).join('');
 
-                // Bind pin buttons
                 list.querySelectorAll('.btn-pin-comment').forEach(btn => {
                     btn.addEventListener('click', () => pinComment(btn.dataset.id));
                 });
-                // Bind delete buttons
                 list.querySelectorAll('.btn-delete-comment').forEach(btn => {
                     btn.addEventListener('click', () => deleteComment(btn.dataset.id));
                 });
             }
 
-            function loadComments(model_label, object_id) {
-                currentCommentTarget = { model_label, object_id };
-                document.getElementById('comments-list').innerHTML = '<p class="text-muted small text-center py-2">Loading…</p>';
+            function loadComments(model_label, object_id, listEl, pinnedCountEl) {
+                const targetList  = listEl       || document.getElementById('comments-list');
+                const targetBadge = pinnedCountEl || document.getElementById('comment-pinned-count');
+                currentCommentTarget = { model_label, object_id, listEl: targetList, pinnedCountEl: targetBadge };
+                targetList.innerHTML = '<p class="text-muted small text-center py-2">Loading…</p>';
                 fetch(`/campus/events/${model_label}/${object_id}/comments/`)
                     .then(r => r.json())
-                    .then(data => { if (data.status === 'success') renderComments(data.comments); });
+                    .then(data => { if (data.status === 'success') renderComments(data.comments, targetList, targetBadge); });
             }
 
             function pinComment(commentId) {
@@ -399,7 +303,8 @@
                     method: 'POST', headers: { 'X-CSRFToken': csrfComments }
                 }).then(r => r.json()).then(data => {
                     if (data.status === 'success' && currentCommentTarget)
-                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id,
+                            currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
                 });
             }
 
@@ -409,7 +314,8 @@
                     method: 'POST', headers: { 'X-CSRFToken': csrfComments }
                 }).then(r => r.json()).then(data => {
                     if (data.status === 'success' && currentCommentTarget)
-                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+                        loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id,
+                            currentCommentTarget.listEl, currentCommentTarget.pinnedCountEl);
                 });
             }
 
@@ -468,12 +374,14 @@
 
 			document.addEventListener('DOMContentLoaded', function() {
 				var calendarEl = document.getElementById('calendar');
-                var lectureEvents = {{ events|safe }};
-                var addEventModal = new bootstrap.Modal(document.getElementById('addEventModal'));
-                var editEventModalEl = document.getElementById('editEventModal');
-                var editEventModal = new bootstrap.Modal(editEventModalEl);
-                var addEventForm = document.getElementById('addEventForm');
-                var editEventForm = document.getElementById('editEventForm');
+				var lectureEvents = {{ events|safe }};
+
+				var addEventModal  = new bootstrap.Modal(document.getElementById('addEventModal'));
+				var editEventModal = new bootstrap.Modal(document.getElementById('editEventModal'));
+				var viewEventModal = new bootstrap.Modal(document.getElementById('viewEventModal'));
+				var addEventForm   = document.getElementById('addEventForm');
+				var editEventForm  = document.getElementById('editEventForm');
+				var currentEventId = null;
 
 				var calendar = new FullCalendar.Calendar(calendarEl, {
 					initialView: 'dayGridMonth',
@@ -523,296 +431,345 @@
                             }
                         }
                     },
-                    eventClick: function(info) {
-                        var event = info.event;
-                        var props = event.extendedProps;
-                        
-                        if (props.event_type === 'lecture' || props.event_type === 'meeting') {
-                            document.getElementById('viewEventTitle').innerText = event.title;
-                            document.getElementById('viewEventDescription').innerText = props.description || '';
-                            var startStr = event.start ? event.start.toLocaleString([], {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
-                            var endStr   = event.end   ? event.end.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
-                            document.getElementById('viewEventTime').innerText = startStr + (endStr ? ' – ' + endStr : '');
-                            document.getElementById('viewEventPriorityRow').style.display = 'none';
+				eventClick: function(info) {
+					if (info.event.url || !info.event.id) return;
+					var event = info.event;
+					var props = event.extendedProps;
+					var eventType = props.event_type || '';
 
-                            var statusEl = document.getElementById('viewEventStatus');
-                            statusEl.innerText = props.status.charAt(0).toUpperCase() + props.status.slice(1);
-                            var statusBadgeClass = props.status === 'completed' ? 'bg-success' : props.status === 'missed' ? 'bg-danger' : props.status === 'exempt' ? 'bg-secondary' : 'bg-primary';
-                            statusEl.className = 'badge ' + statusBadgeClass;
+					if (eventType === 'lecture' || eventType === 'meeting') {
+						// ── Lecture / Meeting: show view modal with sign-in ──
+						document.getElementById('viewEventTitle').innerText = event.title;
+						document.getElementById('viewEventDescription').innerText = props.description || '';
+						var dateOpts = {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'};
+						var timeOpts = {hour:'2-digit',minute:'2-digit'};
+						document.getElementById('viewEventTime').innerText =
+							(event.start ? event.start.toLocaleString([], dateOpts) : '') +
+							(event.end   ? ' – ' + event.end.toLocaleString([], timeOpts) : '');
+						document.getElementById('viewEventPriorityRow').style.display = 'none';
 
-                            var signInContainer = document.getElementById('signInContainer');
-                            var signedInMsg = document.getElementById('signedInMsg');
-                            var signInBtn = document.getElementById('eventSignInBtn');
+						var statusEl = document.getElementById('viewEventStatus');
+						var status = props.status || 'pending';
+						statusEl.innerText = status.charAt(0).toUpperCase() + status.slice(1);
+						statusEl.className = 'badge ' + (status==='completed'?'bg-success':status==='missed'?'bg-danger':status==='exempt'?'bg-secondary':'bg-primary');
 
-                            if (props.is_signed_in) {
-                                signInContainer.style.display = 'none';
-                                signedInMsg.style.display = 'block';
-                            } else if (props.status === 'scheduled' || props.status === 'approved') {
-                                signInContainer.style.display = 'block';
-                                signedInMsg.style.display = 'none';
-                                signInBtn.onclick = function() {
-                                    if (props.event_type === 'lecture') {
-                                        window.location.href = '/campus/lecture/' + event.id + '/schedule/{{ request.user.student.id }}/confirm/';
-                                    } else {
-                                        fetch('/campus/event/signin/meeting/' + event.id + '/', {
-                                            method: 'POST',
-                                            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-                                        })
-                                        .then(r => r.json())
-                                        .then(data => {
-                                            if (data.status === 'success') {
-                                                new bootstrap.Modal(document.getElementById('viewEventModal')).hide();
-                                                location.reload();
-                                            } else { alert('Error signing in: ' + data.message); }
-                                        });
-                                    }
-                                };
-                            } else {
-                                signInContainer.style.display = 'none';
-                                signedInMsg.style.display = 'none';
-                            }
+						var signInContainer = document.getElementById('signInContainer');
+						var signedInMsg     = document.getElementById('signedInMsg');
+						var signInBtn       = document.getElementById('eventSignInBtn');
 
-                            // Load comments
-                            var modelLabel = props.event_type === 'lecture' ? 'lecture' : 'meetingrequest';
-                            loadComments(modelLabel, event.id);
+						if (props.is_signed_in) {
+							signInContainer.style.display = 'none';
+							signedInMsg.style.display = 'block';
+						} else if (status === 'scheduled' || status === 'approved') {
+							signInContainer.style.display = 'block';
+							signedInMsg.style.display = 'none';
+							signInBtn.onclick = function() {
+								if (eventType === 'lecture') {
+									window.location.href = '/campus/lecture/' + event.id + '/schedule/{{ request.user.student.id }}/confirm/';
+								} else {
+									fetch('/campus/event/signin/meeting/' + event.id + '/', {
+										method: 'POST',
+										headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+									}).then(r => r.json()).then(data => {
+										if (data.status === 'success') { viewEventModal.hide(); location.reload(); }
+										else { alert('Error signing in: ' + data.message); }
+									});
+								}
+							};
+						} else {
+							signInContainer.style.display = 'none';
+							signedInMsg.style.display = 'none';
+						}
+						loadComments(eventType === 'lecture' ? 'lecture' : 'meetingrequest', event.id);
+						viewEventModal.show();
 
-                            new bootstrap.Modal(document.getElementById('viewEventModal')).show();
-                        } else if (props.description !== undefined) {
-                            // Personal Event — pre-populate edit form fields
-                            document.getElementById('edit_event_id').value = event.id;
-                            editEventForm.querySelector('#id_title').value = event.title;
-                            editEventForm.querySelector('#id_description').value = props.description || '';
-                            editEventForm.querySelector('#id_start_date').value = toLocalISOString(event.start);
-                            editEventForm.querySelector('#id_end_date').value = event.end ? toLocalISOString(event.end) : toLocalISOString(event.start);
-                            // Populate priority in edit form
-                            var editPriorityEl = editEventForm.querySelector('#id_priority');
-                            if (editPriorityEl) editPriorityEl.value = props.priority || 'medium';
+					} else {
+						// ── Personal Event: open edit modal with comments (same as faculty) ──
+						currentEventId = event.id;
+						document.getElementById('edit-form-errors').innerText = '';
+						document.getElementById('edit_event_id').value = event.id;
+						editEventForm.querySelector('#id_title').value = event.title;
+						editEventForm.querySelector('#id_description').value = props.description || '';
+						editEventForm.querySelector('#id_start_date').value = toLocalISOString(event.start);
+						editEventForm.querySelector('#id_end_date').value = event.end ? toLocalISOString(event.end) : toLocalISOString(event.start);
+						var priEl = editEventForm.querySelector('#id_priority');
+						if (priEl) priEl.value = props.priority || 'medium';
+						document.getElementById('ev-new-comment-text').value = '';
+						document.getElementById('ev-comment-error').style.display = 'none';
+						loadComments('studentpersonalevent', event.id,
+							document.getElementById('ev-comments-list'),
+							document.getElementById('ev-comment-pinned-count'));
+						editEventModal.show();
+					}
+				},
+				dateClick: function(info) {
+					addEventForm.reset();
+					document.getElementById('add-form-errors').innerText = '';
+					addEventForm.querySelector('#id_start_date').value = toLocalISOString(info.date);
+					var endDate = new Date(info.date);
+					endDate.setHours(endDate.getHours() + 1);
+					addEventForm.querySelector('#id_end_date').value = toLocalISOString(endDate);
+					addEventModal.show();
+				}
+			});
+			calendar.render();
 
-                            if (confirm('Do you want to View/Sign-in (OK) or Edit (Cancel) this personal event?')) {
-                                document.getElementById('viewEventTitle').innerText = event.title;
-                                document.getElementById('viewEventDescription').innerText = props.description || '';
-                                document.getElementById('viewEventTime').innerText = moment(event.start).format('YYYY-MM-DD HH:mm') + ' - ' + moment(event.end).format('HH:mm');
+			// ── Recurrence field visibility ──
+			function findFieldRow(form, name) {
+				var el = form.querySelector('[name="' + name + '"]');
+				if (!el) return null;
+				return el.closest('.mb-3') || el.closest('.form-group') || el.parentElement;
+			}
+			function toggleRecurrenceFields(form) {
+				var patternEl = form.querySelector('[name="recurrence_pattern"]');
+				if (!patternEl) return;
+				var pattern = patternEl.value;
+				var endTypeRow = findFieldRow(form, 'recurrence_end_type');
+				var countRow   = findFieldRow(form, 'recurrence_count');
+				var endDateRow = findFieldRow(form, 'recurrence_end_date');
+				if (!endTypeRow || !countRow || !endDateRow) return;
+				if (pattern === 'none') {
+					endTypeRow.style.display = countRow.style.display = endDateRow.style.display = 'none';
+				} else {
+					endTypeRow.style.display = 'block';
+					var endType = (form.querySelector('[name="recurrence_end_type"]') || {}).value || 'count';
+					countRow.style.display   = endType === 'count' ? 'block' : 'none';
+					endDateRow.style.display = endType === 'date'  ? 'block' : 'none';
+				}
+			}
+			[addEventForm, editEventForm].forEach(function(form) {
+				if (!form) return;
+				var rp  = form.querySelector('[name="recurrence_pattern"]');
+				var ret = form.querySelector('[name="recurrence_end_type"]');
+				if (rp)  rp.addEventListener('change',  function() { toggleRecurrenceFields(form); });
+				if (ret) ret.addEventListener('change', function() { toggleRecurrenceFields(form); });
+				toggleRecurrenceFields(form);
+			});
 
-                                var statusEl = document.getElementById('viewEventStatus');
-                                var status = props.status || 'pending';
-                                statusEl.innerText = status.charAt(0).toUpperCase() + status.slice(1);
-                                var peBadgeClass = status === 'completed' ? 'bg-success' : status === 'missed' ? 'bg-danger' : status === 'exempt' ? 'bg-secondary' : 'bg-primary';
-                                statusEl.className = 'badge ' + peBadgeClass;
+			// ── Open Add-Event modal ──
+			document.getElementById('openAddEventBtn').addEventListener('click', function() {
+				addEventForm.reset();
+				document.getElementById('add-form-errors').innerText = '';
+				addEventModal.show();
+			});
 
-                                // Show priority dot
-                                var priority = props.priority || 'medium';
-                                var priorityColor = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
-                                var priorityLabel = priority.charAt(0).toUpperCase() + priority.slice(1);
-                                document.getElementById('viewEventPriorityRow').style.display = '';
-                                document.getElementById('viewEventPriorityDot').style.background = priorityColor;
-                                document.getElementById('viewEventPriorityLabel').innerText = priorityLabel;
+			// ── Save (create) ──
+			document.getElementById('saveEventBtn').addEventListener('click', function() {
+				var formData = new FormData(addEventForm);
+				fetch("{% url 'add_personal_event' %}", {
+					method: 'POST',
+					body: formData,
+					headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 'success') {
+						addEventModal.hide();
+						addEventForm.reset();
+						calendar.refetchEvents();
+					} else {
+						var msg = '';
+						if (data.errors) { for (var f in data.errors) { msg += data.errors[f].join(', ') + ' '; } }
+						document.getElementById('add-form-errors').innerText = msg || 'Please correct the errors.';
+					}
+				})
+				.catch(function(err) { console.error('Save error:', err); });
+			});
 
-                                var signInContainer = document.getElementById('signInContainer');
-                                var signedInMsg = document.getElementById('signedInMsg');
-                                var signInBtn = document.getElementById('eventSignInBtn');
+			// ── Update ──
+			document.getElementById('updateEventBtn').addEventListener('click', function() {
+				var url = "{% url 'update_personal_event' 0 %}".replace('0', currentEventId);
+				fetch(url, {
+					method: 'POST',
+					body: new FormData(editEventForm),
+					headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 'success') { editEventModal.hide(); calendar.refetchEvents(); }
+					else {
+						var msg = '';
+						if (data.errors) { for (var f in data.errors) { msg += data.errors[f].join(', ') + ' '; } }
+						document.getElementById('edit-form-errors').innerText = msg || 'Please correct the errors.';
+					}
+				})
+				.catch(function(err) { console.error('Update error:', err); });
+			});
 
-                                if (props.is_signed_in) {
-                                    signInContainer.style.display = 'none';
-                                    signedInMsg.style.display = 'block';
-                                } else if (status === 'pending') {
-                                    signInContainer.style.display = 'block';
-                                    signedInMsg.style.display = 'none';
-                                    signInBtn.onclick = function() {
-                                        fetch('/campus/event/signin/personal/' + event.id + '/', {
-                                            method: 'POST',
-                                            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-                                        })
-                                        .then(response => response.json())
-                                        .then(data => {
-                                            if (data.status === 'success') { location.reload(); }
-                                            else { alert('Error signing in: ' + data.message); }
-                                        });
-                                    };
-                                } else {
-                                    signInContainer.style.display = 'none';
-                                    signedInMsg.style.display = 'none';
-                                }
-                                // Load comments for personal event
-                                loadComments('studentpersonalevent', event.id);
-                                new bootstrap.Modal(document.getElementById('viewEventModal')).show();
-                            } else {
-                                editEventModal.show();
-                            }
-                        }
-                    },
-                    dateClick: function(info) {
-                        // Prefill the start date of the new event form with the clicked date
-                        addEventForm.reset(); // Reset form before showing
-                        document.getElementById('add-form-errors').innerText = ''; // Clear previous errors
-                        addEventForm.querySelector('#id_start_date').value = toLocalISOString(info.date);
-                        
-                        // Default end date to 1 hour after start date
-                        let endDate = new Date(info.date);
-                        endDate.setHours(endDate.getHours() + 1);
-                        addEventForm.querySelector('#id_end_date').value = toLocalISOString(endDate);
-                        
-                        addEventModal.show();
-                    }
+			// ── Delete ──
+			document.getElementById('deleteEventBtn').addEventListener('click', function() {
+				if (!confirm('Are you sure you want to delete this event?')) return;
+				var url = "{% url 'delete_personal_event' 0 %}".replace('0', currentEventId);
+				fetch(url, {
+					method: 'POST',
+					headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 'success') { editEventModal.hide(); calendar.refetchEvents(); }
+					else { alert('Error deleting event: ' + data.message); }
+				})
+				.catch(function(err) { console.error('Delete error:', err); });
+			});
+
+			// ── Post comment — Personal Event modal ──
+			document.getElementById('ev-submit-comment-btn').addEventListener('click', function() {
+				if (!currentCommentTarget) return;
+				var text = document.getElementById('ev-new-comment-text').value.trim();
+				var errEl = document.getElementById('ev-comment-error');
+				errEl.style.display = 'none';
+				if (!text) { errEl.textContent = 'Comment cannot be empty.'; errEl.style.display = ''; return; }
+				var fd = new FormData();
+				fd.append('content', text);
+				fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
+					method: 'POST', body: fd, headers: { 'X-CSRFToken': csrfComments }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 'success') {
+						document.getElementById('ev-new-comment-text').value = '';
+						loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id,
+							document.getElementById('ev-comments-list'),
+							document.getElementById('ev-comment-pinned-count'));
+					} else { errEl.textContent = data.message || 'Error posting comment.'; errEl.style.display = ''; }
 				});
-				calendar.render();
+			});
 
-                // Recurrence Fields Toggle Logic
-                function findFieldRow(form, name) {
-                    const el = form.querySelector('[name="' + name + '"]');
-                    if (!el) return null;
-                    return el.closest('.mb-3') || el.closest('.form-group') || el.parentElement;
-                }
-                function toggleRecurrenceFields(form) {
-                    const patternEl = form.querySelector('[name="recurrence_pattern"]');
-                    if (!patternEl) return;
-                    const pattern = patternEl.value;
-                    const endTypeRow = findFieldRow(form, 'recurrence_end_type');
-                    const countRow   = findFieldRow(form, 'recurrence_count');
-                    const endDateRow = findFieldRow(form, 'recurrence_end_date');
-                    if (!endTypeRow || !countRow || !endDateRow) return;
-
-                    if (pattern === 'none') {
-                        endTypeRow.style.display = 'none';
-                        countRow.style.display = 'none';
-                        endDateRow.style.display = 'none';
-                    } else {
-                        endTypeRow.style.display = 'block';
-                        const endTypeEl = form.querySelector('[name="recurrence_end_type"]');
-                        const endType = endTypeEl ? endTypeEl.value : 'count';
-                        if (endType === 'count') {
-                            countRow.style.display = 'block';
-                            endDateRow.style.display = 'none';
-                        } else if (endType === 'date') {
-                            countRow.style.display = 'none';
-                            endDateRow.style.display = 'block';
-                        } else {
-                            countRow.style.display = 'none';
-                            endDateRow.style.display = 'none';
-                        }
-                    }
-                }
-
-                [addEventForm, editEventForm].forEach(form => {
-                    form.querySelector('[name="recurrence_pattern"]').addEventListener('change', () => toggleRecurrenceFields(form));
-                    form.querySelector('[name="recurrence_end_type"]').addEventListener('change', () => toggleRecurrenceFields(form));
-                    toggleRecurrenceFields(form); // Initial call
-                });
-
-                // Handle ADD form submission
-                document.getElementById('saveEventBtn').addEventListener('click', function() {
-                    var formData = new FormData(addEventForm);
-                    
-                    fetch("{% url 'add_personal_event' %}", {
-                        method: 'POST',
-                        body: formData,
-                        headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            addEventModal.hide();
-                            addEventForm.reset();
-                            calendar.refetchEvents();
-                        } else {
-                            let errorMsg = '';
-                            if (data.errors) {
-                                for (let field in data.errors) {
-                                    errorMsg += data.errors[field].join(', ') + ' ';
-                                }
-                            }
-                            document.getElementById('add-form-errors').innerText = errorMsg || 'Please correct the errors.';
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-                });
-
-                // Handle UPDATE form submission
-                document.getElementById('updateEventBtn').addEventListener('click', function() {
-                    var eventId = document.getElementById('edit_event_id').value;
-                    var formData = new FormData(editEventForm);
-                    var urlTemplate = editEventModalEl.dataset.updateUrlTemplate;
-                    var url = urlTemplate.replace('0', eventId);
-
-                    fetch(url, {
-                        method: 'POST',
-                        body: formData,
-                        headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            editEventModal.hide();
-                            calendar.refetchEvents();
-                        } else {
-                            let errorMsg = '';
-                            if (data.errors) {
-                                for (let field in data.errors) {
-                                    errorMsg += data.errors[field].join(', ') + ' ';
-                                }
-                            }
-                            document.getElementById('edit-form-errors').innerText = errorMsg || 'Please correct the errors.';
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-                });
-
-                // Handle DELETE button click
-                document.getElementById('deleteEventBtn').addEventListener('click', function() {
-                    var eventId = document.getElementById('edit_event_id').value;
-                    var urlTemplate = editEventModalEl.dataset.deleteUrlTemplate;
-                    var url = urlTemplate.replace('0', eventId);
-
-                    if (confirm('Are you sure you want to delete this event?')) {
-                        fetch(url, {
-                            method: 'POST',
-                            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.status === 'success') {
-                                editEventModal.hide();
-                                calendar.refetchEvents();
-                            } else {
-                                alert('Error deleting event: ' + data.message);
-                            }
-                        })
-                        .catch(error => console.error('Error:', error));
-                    }
-                });
-
-                // Handle submit comment
-                document.getElementById('submit-comment-btn').addEventListener('click', function() {
-                    if (!currentCommentTarget) return;
-                    var text = document.getElementById('new-comment-text').value.trim();
-                    var errEl = document.getElementById('comment-error');
-                    errEl.style.display = 'none';
-                    if (!text) {
-                        errEl.textContent = 'Comment cannot be empty.';
-                        errEl.style.display = '';
-                        return;
-                    }
-                    var formData = new FormData();
-                    formData.append('content', text);
-                    fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
-                        method: 'POST',
-                        body: formData,
-                        headers: { 'X-CSRFToken': csrfComments }
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            document.getElementById('new-comment-text').value = '';
-                            loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
-                        } else {
-                            errEl.textContent = data.message || 'Error posting comment.';
-                            errEl.style.display = '';
-                        }
-                    })
-                    .catch(err => console.error('Comment submit error:', err));
-                });
+			// ── Post comment — Lecture/Meeting modal ──
+			document.getElementById('submit-comment-btn').addEventListener('click', function() {
+				if (!currentCommentTarget) return;
+				var text = document.getElementById('new-comment-text').value.trim();
+				var errEl = document.getElementById('comment-error');
+				errEl.style.display = 'none';
+				if (!text) { errEl.textContent = 'Comment cannot be empty.'; errEl.style.display = ''; return; }
+				var fd = new FormData();
+				fd.append('content', text);
+				fetch('/campus/events/' + currentCommentTarget.model_label + '/' + currentCommentTarget.object_id + '/comments/add/', {
+					method: 'POST', body: fd, headers: { 'X-CSRFToken': csrfComments }
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.status === 'success') {
+						document.getElementById('new-comment-text').value = '';
+						loadComments(currentCommentTarget.model_label, currentCommentTarget.object_id);
+					} else { errEl.textContent = data.message || 'Error posting comment.'; errEl.style.display = ''; }
+				})
+				.catch(function(err) { console.error('Comment error:', err); });
+			});
 			});
 		</script>
 	</main>
+
+<!-- Add Event Modal -->
+<div class="modal fade" id="addEventModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+<div class="modal-header">
+<h5 class="modal-title">Add Personal Event</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+<form id="addEventForm" onsubmit="return false;">
+{% csrf_token %}
+{{ personal_event_form|crispy }}
+<div id="add-form-errors" class="text-danger mt-2"></div>
+</form>
+</div>
+<div class="modal-footer">
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+<button type="button" class="btn btn-primary" id="saveEventBtn">Save Event</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Edit / Delete Personal Event Modal -->
+<div class="modal fade" id="editEventModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+<div class="modal-header">
+<h5 class="modal-title">Edit Personal Event</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+<form id="editEventForm" onsubmit="return false;">
+{% csrf_token %}
+<input type="hidden" id="edit_event_id" name="event_id">
+{{ personal_event_form|crispy }}
+<div id="edit-form-errors" class="text-danger mt-2"></div>
+</form>
+<hr class="my-3">
+<h6 class="mb-2">
+  <i class="bi bi-chat-dots me-1"></i> Comments
+  <span id="ev-comment-pinned-count" class="badge bg-warning text-dark ms-1" style="display:none"></span>
+</h6>
+<div id="ev-comments-list" style="max-height:180px;overflow-y:auto;" class="mb-2"></div>
+<div class="input-group input-group-sm mb-1">
+  <textarea id="ev-new-comment-text" class="form-control" rows="2" placeholder="Add a comment..."></textarea>
+  <button class="btn btn-outline-primary" type="button" id="ev-submit-comment-btn">
+    <i class="bi bi-send"></i> Post
+  </button>
+</div>
+<div id="ev-comment-error" class="text-danger small" style="display:none"></div>
+</div>
+<div class="modal-footer">
+<button type="button" class="btn btn-danger" id="deleteEventBtn">Delete</button>
+<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+<button type="button" class="btn btn-primary" id="updateEventBtn">Update</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- View Lecture / Meeting Modal -->
+<div class="modal fade" id="viewEventModal" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+<div class="modal-header">
+<h5 class="modal-title" id="viewEventTitle">Event Details</h5>
+<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+<p id="viewEventDescription" class="text-muted mb-2"></p>
+<div class="row mb-2">
+  <div class="col-4 fw-semibold text-muted">Date &amp; Time</div>
+  <div class="col-8" id="viewEventTime"></div>
+</div>
+<div class="row mb-2" id="viewEventPriorityRow" style="display:none">
+  <div class="col-4 fw-semibold text-muted">Priority</div>
+  <div class="col-8" id="viewEventPriority"></div>
+</div>
+<div class="row mb-2">
+  <div class="col-4 fw-semibold text-muted">Status</div>
+  <div class="col-8"><span id="viewEventStatus" class="badge bg-primary"></span></div>
+</div>
+<div id="signInContainer" class="mt-3" style="display:none">
+  <button class="btn btn-success btn-sm" id="eventSignInBtn"><i class="bi bi-check-circle me-1"></i>Sign In</button>
+</div>
+<div id="signedInMsg" class="mt-3 text-success small" style="display:none">
+  <i class="bi bi-check-circle-fill me-1"></i> You have already signed in for this event.
+</div>
+<hr class="my-3">
+<h6 class="mb-2">
+  <i class="bi bi-chat-dots me-1"></i> Announcements &amp; Comments
+  <span id="comment-pinned-count" class="badge bg-warning text-dark ms-1" style="display:none"></span>
+</h6>
+<div id="comments-list" style="max-height:220px;overflow-y:auto;" class="mb-2"></div>
+<div class="input-group input-group-sm mb-1">
+  <textarea id="new-comment-text" class="form-control" rows="2" placeholder="Add an announcement or comment..."></textarea>
+  <button class="btn btn-outline-primary" type="button" id="submit-comment-btn">
+    <i class="bi bi-send"></i> Post
+  </button>
+</div>
+<div id="comment-error" class="text-danger small" style="display:none"></div>
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+</div>
+</div>
+</div>
+</div>
+
 <style>
 /* Priority dot */
 .priority-dot {

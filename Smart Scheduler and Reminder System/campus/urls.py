@@ -52,4 +52,5 @@ urlpatterns = [
     path('events/<str:model_label>/<str:object_id>/comments/add/', views.add_event_comment, name='add_event_comment'),
     path('events/comments/<str:comment_id>/pin/', views.pin_event_comment, name='pin_event_comment'),
     path('events/comments/<str:comment_id>/delete/', views.delete_event_comment, name='delete_event_comment'),
+
 ]

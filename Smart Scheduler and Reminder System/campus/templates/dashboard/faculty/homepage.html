@@ -193,7 +193,7 @@
 	<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 	</div>
 	<div class="modal-body">
-	<form id="addEventForm">
+	<form id="addEventForm" onsubmit="return false;">
 	{% csrf_token %}
 	{{ personal_event_form|crispy }}
 	<div id="add-form-errors" class="text-danger mt-2"></div>
@@ -216,7 +216,7 @@
 	<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 	</div>
 	<div class="modal-body">
-	<form id="editEventForm">
+	<form id="editEventForm" onsubmit="return false;">
 	{% csrf_token %}
 	{{ personal_event_form|crispy }}
 	<div id="edit-form-errors" class="text-danger mt-2"></div>
@@ -315,7 +315,7 @@
 					+ '<div><span class="comment-author">' + (c.author || 'Unknown') + '</span>'
 					+ '<span class="comment-meta">' + (c.date_created || '') + '</span>'
 					+ pinLabel + '</div>'
-					+ '<div class="comment-body markdown-body">' + marked.parse(c.content) + '</div>'
+					+ '<div class="comment-body markdown-body">' + marked.parse((c.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')) + '</div>'
 					+ '<div class="comment-actions">' + pinBtn + delBtn + '</div>'
 					+ '</div>';
 			});
@@ -559,9 +559,9 @@
 		}
 	}
 
-	[addEventForm, editEventForm].forEach(form => {
-		form.querySelector('[name="recurrence_pattern"]').addEventListener('change', () => toggleRecurrenceFields(form));
-		form.querySelector('[name="recurrence_end_type"]').addEventListener('change', () => toggleRecurrenceFields(form));
+	[addEventForm, editEventForm].forEach(form => { if (!form) return;
+		const rp = form.querySelector("[name=\"recurrence_pattern\"]"); if (rp) rp.addEventListener('change', () => toggleRecurrenceFields(form));
+		const ret = form.querySelector("[name=\"recurrence_end_type\"]"); if (ret) ret.addEventListener('change', () => toggleRecurrenceFields(form));
 		toggleRecurrenceFields(form); // Initial call
 	});
 
@@ -590,7 +590,7 @@
 	document.getElementById('add-form-errors').innerText = errorMsg || 'Please correct the errors.';
 	}
 	})
-	.catch(error => console.error('Error:', error));
+	.catch(error => { console.error('Error:', error); document.getElementById('add-form-errors').innerText = 'Network error: ' + error.message; });
 	});
 
 	// Handle UPDATE

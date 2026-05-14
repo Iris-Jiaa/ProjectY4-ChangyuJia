@@ -89,7 +89,7 @@ class SignupView(SessionWizardView):
         return redirect('login')
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: user.is_staff is False or user.is_superuser is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False), name='get')
 class EditStudentProfileView(View):
     profile_form_class = EditProfileForm
     student_form_class = EditStudentDetailsForm
@@ -137,7 +137,7 @@ class EditStudentProfileView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: user.is_staff is False or user.is_superuser is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False), name='get')
 class EditFacultyStaffProfileView(View):
     profile_form_class = EditProfileForm
     faculty_form_class = EditFacultyDetailsForm

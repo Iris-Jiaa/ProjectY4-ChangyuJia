@@ -1,4 +1,5 @@
 {% extends base_template %}
+{% load static %}
 {% block title %}Personal Report{% endblock %}
 
 {% block content %}
@@ -14,10 +15,11 @@
     </div>
 
     <section class="section dashboard">
-        <div class="row">
-            <!-- Overall Summary Cards -->
+
+        <!-- Summary Cards -->
+        <div class="row g-3 mb-3">
             <div class="col-xxl-4 col-md-6">
-                <div class="card info-card sales-card">
+                <div class="card info-card sales-card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Completed Events <span>| Total</span></h5>
                         <div class="d-flex align-items-center">
@@ -33,7 +35,7 @@
             </div>
 
             <div class="col-xxl-4 col-md-6">
-                <div class="card info-card revenue-card">
+                <div class="card info-card revenue-card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Missed Events <span>| Total</span></h5>
                         <div class="d-flex align-items-center">
@@ -47,12 +49,156 @@
                     </div>
                 </div>
             </div>
+
+            <div class="col-xxl-4 col-md-12">
+                <div class="card h-100" style="border-left: 4px solid #0dcaf0;">
+                    <div class="card-body">
+                        <h5 class="card-title">Participation Rate <span>| Overall</span></h5>
+                        <div class="d-flex align-items-center">
+                            <div class="card-icon rounded-circle d-flex align-items-center justify-content-center" style="background: rgba(13,202,240,0.1);">
+                                <i class="bi bi-pie-chart-fill text-info"></i>
+                            </div>
+                            <div class="ps-3">
+                                {% with total_all=total_completed|add:total_missed %}
+                                {% if total_all > 0 %}
+                                    <h6>{% widthratio total_completed total_all 100 %}%</h6>
+                                    <span class="text-muted small">of {{ total_all }} resolved events</span>
+                                {% else %}
+                                    <h6>—</h6>
+                                    <span class="text-muted small">No events recorded yet</span>
+                                {% endif %}
+                                {% endwith %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="row">
-            <!-- Lectures Statistics -->
+        <!-- Participation Overview Chart -->
+        <div class="row g-3 mb-3">
+            <div class="col-lg-5">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Participation Overview</h5>
+                        <p class="text-muted small mb-3">Distribution of all events by status</p>
+                        <div class="d-flex justify-content-center">
+                            <canvas id="overviewChart" style="max-width:260px; max-height:260px;"></canvas>
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-center gap-3 mt-3">
+                            <span class="d-flex align-items-center gap-1 small"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#198754;"></span>Completed</span>
+                            <span class="d-flex align-items-center gap-1 small"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;"></span>Missed</span>
+                            <span class="d-flex align-items-center gap-1 small"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#0dcaf0;"></span>Pending / Upcoming</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category breakdown -->
+            <div class="col-lg-7">
+                <div class="row g-3 h-100">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body py-3">
+                                <div class="row align-items-center">
+                                    <div class="col-auto">
+                                        <canvas id="lectureChart" width="80" height="80"></canvas>
+                                    </div>
+                                    <div class="col">
+                                        <h6 class="mb-1 fw-semibold">Lectures</h6>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <span class="badge bg-success">{{ lecture_stats.completed }} Completed</span>
+                                            <span class="badge bg-danger">{{ lecture_stats.missed }} Missed</span>
+                                            <span class="badge bg-info text-dark">{{ lecture_stats.scheduled }} Upcoming</span>
+                                        </div>
+                                        {% if lecture_stats.total > 0 %}
+                                        <div class="progress mt-2" style="height:6px; border-radius:3px;">
+                                            <div class="progress-bar bg-success" style="width:{% widthratio lecture_stats.completed lecture_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-danger" style="width:{% widthratio lecture_stats.missed lecture_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-info" style="width:{% widthratio lecture_stats.scheduled lecture_stats.total 100 %}%"></div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-auto text-end">
+                                        <div class="text-muted small">Total</div>
+                                        <div class="fw-bold fs-5">{{ lecture_stats.total }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body py-3">
+                                <div class="row align-items-center">
+                                    <div class="col-auto">
+                                        <canvas id="personalChart" width="80" height="80"></canvas>
+                                    </div>
+                                    <div class="col">
+                                        <h6 class="mb-1 fw-semibold">Personal Events</h6>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <span class="badge bg-success">{{ personal_stats.completed }} Completed</span>
+                                            <span class="badge bg-danger">{{ personal_stats.missed }} Missed</span>
+                                            <span class="badge bg-warning text-dark">{{ personal_stats.pending }} Pending</span>
+                                        </div>
+                                        {% if personal_stats.total > 0 %}
+                                        <div class="progress mt-2" style="height:6px; border-radius:3px;">
+                                            <div class="progress-bar bg-success" style="width:{% widthratio personal_stats.completed personal_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-danger" style="width:{% widthratio personal_stats.missed personal_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-warning" style="width:{% widthratio personal_stats.pending personal_stats.total 100 %}%"></div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-auto text-end">
+                                        <div class="text-muted small">Total</div>
+                                        <div class="fw-bold fs-5">{{ personal_stats.total }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body py-3">
+                                {% with mt_active=meeting_stats.approved|add:meeting_stats.pending %}
+                                <div class="row align-items-center">
+                                    <div class="col-auto">
+                                        <canvas id="meetingChart" width="80" height="80"></canvas>
+                                    </div>
+                                    <div class="col">
+                                        <h6 class="mb-1 fw-semibold">Meeting Requests</h6>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <span class="badge bg-success">{{ meeting_stats.completed }} Completed</span>
+                                            <span class="badge bg-danger">{{ meeting_stats.missed }} Missed</span>
+                                            <span class="badge bg-info text-dark">{{ mt_active }} Active</span>
+                                        </div>
+                                        {% if meeting_stats.total > 0 %}
+                                        <div class="progress mt-2" style="height:6px; border-radius:3px;">
+                                            <div class="progress-bar bg-success" style="width:{% widthratio meeting_stats.completed meeting_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-danger" style="width:{% widthratio meeting_stats.missed meeting_stats.total 100 %}%"></div>
+                                            <div class="progress-bar bg-info" style="width:{% widthratio mt_active meeting_stats.total 100 %}%"></div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-auto text-end">
+                                        <div class="text-muted small">Total</div>
+                                        <div class="fw-bold fs-5">{{ meeting_stats.total }}</div>
+                                    </div>
+                                </div>
+                                {% endwith %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Statistics -->
+        <div class="row g-3">
             <div class="col-lg-4">
-                <div class="card">
+                <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Lectures Summary</h5>
                         <ul class="list-group list-group-flush">
@@ -77,9 +223,8 @@
                 </div>
             </div>
 
-            <!-- Personal Events Statistics -->
             <div class="col-lg-4">
-                <div class="card">
+                <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Personal Events</h5>
                         <ul class="list-group list-group-flush">
@@ -104,9 +249,8 @@
                 </div>
             </div>
 
-            <!-- Meeting Requests Statistics -->
             <div class="col-lg-4">
-                <div class="card">
+                <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Meeting Requests</h5>
                         <ul class="list-group list-group-flush">
@@ -123,7 +267,7 @@
                                 <span class="badge bg-danger rounded-pill">{{ meeting_stats.missed }}</span>
                             </li>
                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                Approved/Pending
+                                Approved / Pending
                                 <span class="badge bg-info rounded-pill">{{ meeting_stats.approved|add:meeting_stats.pending }}</span>
                             </li>
                         </ul>
@@ -132,17 +276,73 @@
             </div>
         </div>
 
-        <!-- Visual Analytics (Optional: could add charts here later) -->
-        <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Performance Overview</h5>
-                        <p>This report summarizes your activity within the Smart Scheduler system. Stay on track by minimizing missed events and completing your scheduled tasks!</p>
-                    </div>
-                </div>
-            </div>
-        </div>
     </section>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'vendor/chart.js/chart.umd.js' %}"></script>
+<script>
+(function () {
+    'use strict';
+
+    const COLORS = {
+        completed : '#198754',
+        missed    : '#dc3545',
+        pending   : '#0dcaf0',
+        warning   : '#ffc107',
+        empty     : '#e9ecef',
+    };
+
+    function donut(id, data, colors) {
+        const ctx = document.getElementById(id);
+        if (!ctx) return;
+        const total = data.reduce((s, v) => s + v, 0);
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: total > 0 ? data : [1],
+                    backgroundColor: total > 0 ? colors : [COLORS.empty],
+                    borderWidth: total > 0 ? 2 : 0,
+                    borderColor: '#fff',
+                    hoverOffset: total > 0 ? 6 : 0,
+                }]
+            },
+            options: {
+                cutout: '68%',
+                responsive: false,
+                animation: { duration: 700, easing: 'easeInOutQuart' },
+                plugins: { legend: { display: false }, tooltip: { enabled: total > 0 } },
+            }
+        });
+    }
+
+    {% with pending_all=lecture_stats.scheduled|add:personal_stats.pending %}
+    {% with mt_active=meeting_stats.approved|add:meeting_stats.pending %}
+    {% with pending_total=pending_all|add:mt_active %}
+    donut('overviewChart',
+        [{{ total_completed }}, {{ total_missed }}, {{ pending_total }}],
+        [COLORS.completed, COLORS.missed, COLORS.pending]
+    );
+    {% endwith %}{% endwith %}{% endwith %}
+
+    donut('lectureChart',
+        [{{ lecture_stats.completed }}, {{ lecture_stats.missed }}, {{ lecture_stats.scheduled }}],
+        [COLORS.completed, COLORS.missed, COLORS.pending]
+    );
+
+    donut('personalChart',
+        [{{ personal_stats.completed }}, {{ personal_stats.missed }}, {{ personal_stats.pending }}],
+        [COLORS.completed, COLORS.missed, COLORS.warning]
+    );
+
+    {% with mt_active=meeting_stats.approved|add:meeting_stats.pending %}
+    donut('meetingChart',
+        [{{ meeting_stats.completed }}, {{ meeting_stats.missed }}, {{ mt_active }}],
+        [COLORS.completed, COLORS.missed, COLORS.pending]
+    );
+    {% endwith %}
+})();
+</script>
 {% endblock %}

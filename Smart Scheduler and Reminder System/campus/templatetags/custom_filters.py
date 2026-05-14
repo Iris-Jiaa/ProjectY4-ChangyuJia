@@ -40,6 +40,12 @@ def custom_timesince_filter(value):
 def get_item(dictionary, key):
     return dictionary.get(key)
 
+@register.filter(name='split')
+def split_filter(value, arg=','):
+    """Split a string by the given separator. {{ "a,b,c"|split:"," }} → ['a','b','c']"""
+    return value.split(arg)
+
+
 @register.filter(name='replace')
 def replace_filter(value, arg):
     """

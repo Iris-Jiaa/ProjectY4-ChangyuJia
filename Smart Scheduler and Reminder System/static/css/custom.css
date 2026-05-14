@@ -1,3 +1,4 @@
+/* ── Notification Popup ─────────────────────────────────────────────────── */
 .notification-popup {
     position: fixed;
     bottom: 20px;
@@ -9,24 +10,20 @@
     display: none;
     z-index: 1000;
 }
-
 .notification-popup h5 {
     margin: 0;
     padding: 15px;
     background-color: #f8f9fa;
     border-bottom: 1px solid #ddd;
 }
-
 .notification-popup-item {
     padding: 15px;
     border-bottom: 1px solid #eee;
 }
-
 .notification-popup-item a {
     text-decoration: none;
     color: #333;
 }
-
 #close-popup {
     display: block;
     width: 100%;
@@ -37,60 +34,288 @@
     cursor: pointer;
 }
 
-/* Toast Notification Styles */
+/* ── Toast Notifications ────────────────────────────────────────────────── */
 #toast-container {
     position: fixed;
     top: 80px;
     right: 20px;
-    z-index: 1056; /* Higher than header */
+    z-index: 1056;
 }
-
 .toast-notification {
     background-color: #fff;
     color: #333;
-    padding: 15px 20px;
+    padding: 14px 18px;
     margin-bottom: 10px;
-    border-radius: 5px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    border-radius: 10px;
+    border-left: 4px solid #28a745;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    width: 350px;
+    width: 360px;
     opacity: 0;
-    transform: translateX(100%);
-    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    transform: translateX(110%);
+    transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-
 .toast-notification.show {
     opacity: 1;
     transform: translateX(0);
 }
-
-.toast-notification .toast-message {
-    flex-grow: 1;
-}
-
+.toast-notification .toast-message { flex-grow: 1; font-size: 0.875rem; }
 .toast-notification .toast-close-btn {
     background: none;
     border: none;
-    font-size: 1.5rem;
-    color: #999;
+    font-size: 1.4rem;
+    color: #aaa;
     cursor: pointer;
-    margin-left: 15px;
+    margin-left: 12px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+.toast-notification .toast-close-btn:hover { color: #555; }
+
+/* ── Page entry animation ───────────────────────────────────────────────── */
+#main {
+    animation: fadeSlideIn 0.35s ease both;
+}
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* Recommendation Box Styles */
+/* ── Page title polish ──────────────────────────────────────────────────── */
+.pagetitle {
+    padding-bottom: 6px;
+    border-bottom: 2px solid rgba(40,167,69,0.18);
+    margin-bottom: 20px !important;
+}
+.pagetitle h1 {
+    letter-spacing: -0.3px;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.card {
+    border-radius: 12px !important;
+    box-shadow: 0 2px 12px rgba(1,41,112,0.07) !important;
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.card:hover {
+    box-shadow: 0 6px 24px rgba(1,41,112,0.13) !important;
+    transform: translateY(-2px);
+}
+.card-body { border-radius: 12px; }
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 600;
+}
+.card-title {
+    letter-spacing: -0.2px;
+}
+
+/* info-card accent stripe */
+.info-card.sales-card   { border-top: 3px solid #28a745; }
+.info-card.revenue-card { border-top: 3px solid #dc3545; }
+.info-card.customers-card { border-top: 3px solid #0dcaf0; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease;
+}
+.btn:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.btn:active { transform: translateY(0);    box-shadow: none; }
+.btn-sm { border-radius: 6px; }
+
+.btn-primary  { box-shadow: 0 2px 6px rgba(40,167,69,0.30); }
+.btn-success  { box-shadow: 0 2px 6px rgba(25,135,84,0.28); }
+.btn-danger   { box-shadow: 0 2px 6px rgba(220,53,69,0.25); }
+.btn-warning  { box-shadow: 0 2px 6px rgba(255,193,7,0.28); }
+.btn-info     { box-shadow: 0 2px 6px rgba(13,202,240,0.25); }
+.btn-secondary{ box-shadow: 0 2px 6px rgba(108,117,125,0.22); }
+
+.btn-outline-primary:hover, .btn-outline-success:hover,
+.btn-outline-secondary:hover { transform: translateY(-1px); }
+
+/* ── Form controls ──────────────────────────────────────────────────────── */
+.form-control, .form-select {
+    border-radius: 8px;
+    border-color: #d0dde8;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.form-control:focus, .form-select:focus {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0.2rem rgba(40,167,69,0.18);
+}
+.form-label { font-weight: 500; margin-bottom: 4px; }
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+.badge {
+    border-radius: 6px;
+    padding: 0.35em 0.65em;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+.badge.rounded-pill { border-radius: 50rem; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.table thead th {
+    background-color: #f0faf2;
+    color: #0c3b2e;
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid #c3e6cb;
+    white-space: nowrap;
+}
+.table-hover tbody tr { transition: background-color 0.15s ease; }
+.table-hover tbody tr:hover { background-color: #f0faf3 !important; }
+.table tbody tr td { vertical-align: middle; font-size: 0.9rem; }
+.table-responsive { border-radius: 10px; }
+
+/* override Bootstrap table-bordered to softer border */
+.table-bordered > :not(caption) > * > * { border-color: #e4f0e8; }
+
+/* ── List groups ────────────────────────────────────────────────────────── */
+.list-group-item {
+    border-color: #e8f3eb;
+    padding: 10px 16px;
+    transition: background-color 0.15s ease;
+    font-size: 0.9rem;
+}
+.list-group-flush .list-group-item:hover { background-color: #f4fbf5; }
+.list-group-flush .list-group-item:first-child { border-radius: 0; }
+
+/* ── Alerts ─────────────────────────────────────────────────────────────── */
+.alert {
+    border-radius: 10px;
+    border-left-width: 4px;
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    padding: 14px 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.alert-warning { border-left-color: #ffc107; }
+.alert-success { border-left-color: #28a745; }
+.alert-danger  { border-left-color: #dc3545; }
+.alert-info    { border-left-color: #0dcaf0; }
+
+/* ── Sidebar refinements ─────────────────────────────────────────────────── */
+.sidebar-nav .nav-link {
+    border-radius: 8px !important;
+    margin-bottom: 3px;
+    transition: background-color 0.2s ease, padding-left 0.2s ease;
+}
+.sidebar-nav .nav-link:hover {
+    padding-left: 20px;
+}
+/* active page indicator */
+.sidebar-nav .nav-link:not(.collapsed) {
+    border-left: 3px solid #2ECC71;
+    padding-left: 12px;
+}
+
+/* ── Profile page ────────────────────────────────────────────────────────── */
+.profile .profile-card {
+    background: linear-gradient(135deg, #f4fbf6 0%, #fff 60%);
+    border-radius: 12px;
+}
+.profile .profile-card h2 { font-size: 22px; }
+.profile .profile-overview .row {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f4f0;
+}
+.profile .profile-overview .row:last-child { border-bottom: none; }
+.nav-tabs-bordered { border-bottom: 2px solid #d4edda; }
+.nav-tabs-bordered .nav-link {
+    border-radius: 8px 8px 0 0;
+    padding: 8px 18px;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+/* ── Notification dropdown items ─────────────────────────────────────────── */
+.header-nav .notifications .notification-item {
+    border-radius: 8px;
+    margin: 2px 6px;
+}
+
+/* ── Activity timeline ───────────────────────────────────────────────────── */
+.dashboard .activity .activity-item .activity-content {
+    background: #f9fefb;
+    border-radius: 8px;
+    padding: 10px 14px 14px 14px;
+    margin-left: 8px;
+}
+
+/* ── Info card number ────────────────────────────────────────────────────── */
+.dashboard .info-card h6 {
+    font-size: 30px;
+    letter-spacing: -0.5px;
+}
+
+/* ── Modal polish ────────────────────────────────────────────────────────── */
+.modal-content {
+    border-radius: 14px;
+    border: none;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal-header {
+    border-bottom: 1px solid #e8f3eb;
+    border-radius: 14px 14px 0 0;
+}
+.modal-footer {
+    border-top: 1px solid #e8f3eb;
+    border-radius: 0 0 14px 14px;
+}
+
+/* ── Dropdown menus ─────────────────────────────────────────────────────── */
+.dropdown-menu {
+    border-radius: 10px !important;
+    box-shadow: 0 8px 30px rgba(1,41,112,0.15) !important;
+}
+.dropdown-item { border-radius: 6px; margin: 1px 4px; width: calc(100% - 8px); }
+
+/* ── Progress bars ───────────────────────────────────────────────────────── */
+.progress { border-radius: 50rem; overflow: hidden; }
+.progress-bar { transition: width 0.8s ease; }
+
+/* ── FullCalendar subtle header ──────────────────────────────────────────── */
+.fc .fc-toolbar-title { font-family: "Poppins", sans-serif; font-weight: 600; }
+.fc .fc-button-primary {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    border-radius: 6px !important;
+}
+.fc .fc-button-primary:hover {
+    background-color: #218838 !important;
+    border-color: #1e7e34 !important;
+}
+.fc .fc-daygrid-day.fc-day-today { background-color: #e8f8ed !important; }
+
+/* ── Back-to-top ─────────────────────────────────────────────────────────── */
+.back-to-top { border-radius: 50% !important; }
+
+/* ── Breadcrumb ──────────────────────────────────────────────────────────── */
+.breadcrumb { background: none; }
+
+/* ── Scrollbar (webkit) ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c3e6cb; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #28a745; }
+
+/* ── Recommendation & scheduled-lectures cards ──────────────────────────── */
 .recommendation-box-content {
     max-height: 120px;
     overflow-y: auto;
 }
-
-/* Increase font size for recommendation box text */
-.recommendation-box-content p {
-    font-size: 1rem; /* Adjust as needed */
-}
-
-/* Increase font size for Scheduled lectures card text */
-.scheduled-lectures-card .activity p {
-    font-size: 1rem; /* Adjust as needed */
-}
+.recommendation-box-content p { font-size: 1rem; }
+.scheduled-lectures-card .activity p { font-size: 1rem; }

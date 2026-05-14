@@ -1,19 +1,7 @@
-"""
-Celery periodic tasks for the Smart Scheduler & Reminder System.
-
-Beat schedule (every 60 s) triggers four tasks:
-  1. send_personal_event_reminders  – personal events for students & faculty
-  2. send_upcoming_lecture_notifications  – scheduled lectures
-  3. send_upcoming_meeting_notifications  – approved meeting requests
-  4. auto_judge_event_statuses  – mark past events completed / missed (every 5 min)
-"""
-
-from celery import shared_task
 from datetime import timedelta, datetime
 
+from celery import shared_task
 from django.contrib.contenttypes.models import ContentType
-from django.core.mail import send_mail
-from django.conf import settings
 from django.utils import timezone
 
 from .models import (
@@ -53,58 +41,30 @@ def _match_window(time_until, prefs):
     return None, None
 
 
-# ── In-app / email delivery helper ───────────────────────────────────────────
+# ── In-app notification helper ────────────────────────────────────────────────
 
 def _send_notification(user, content_object, message):
     """
-    Create an in-app Notification and/or trigger an email.
+    Create an in-app Notification for the user.
 
     Deduplication key: recipient + event (content_type + object_id) + message.
-    This allows multiple distinct reminders (60min, 30min, 15min, instant)
-    for the same event while still preventing the same reminder from being
-    delivered twice if the task happens to run twice in the same window.
+    Prevents the same reminder from being delivered twice within the same window.
     """
     content_type = ContentType.objects.get_for_model(content_object)
 
-    if user.notification_method in ('in_app', 'both'):
-        already_sent = Notification.objects.filter(
+    already_sent = Notification.objects.filter(
+        recipient=user,
+        content_type=content_type,
+        object_id=content_object.id,
+        message=message,
+    ).exists()
+    if not already_sent:
+        Notification.objects.create(
             recipient=user,
+            message=message,
             content_type=content_type,
             object_id=content_object.id,
-            message=message,
-        ).exists()
-        if not already_sent:
-            Notification.objects.create(
-                recipient=user,
-                message=message,
-                content_type=content_type,
-                object_id=content_object.id,
-            )
-
-    if user.notification_method in ('email', 'both'):
-        subject = f"Smart-Scheduler Reminder: {message[:70]}"
-        send_email_notification.delay(str(user.id), subject, message)
-
-
-# ── Email task ────────────────────────────────────────────────────────────────
-
-@shared_task
-def send_email_notification(user_id, subject, message):
-    """Send an email to a single user (called via .delay())."""
-    from accounts.models import User
-    try:
-        user = User.objects.get(id=user_id)
-        send_mail(
-            subject,
-            message,
-            settings.EMAIL_HOST_USER,
-            [user.email],
-            fail_silently=False,
         )
-    except User.DoesNotExist:
-        pass
-    except Exception as exc:
-        print(f"[send_email_notification] Failed for user {user_id}: {exc}")
 
 
 # ── Personal-event reminders ─────────────────────────────────────────────────
@@ -136,7 +96,11 @@ def send_personal_event_reminders():
         else:
             continue
 
-        prefs = [p.strip() for p in user.reminder_preference.split(',') if p.strip()]
+        event_reminder_times = getattr(event, 'reminder_times', '')
+        if event_reminder_times:
+            prefs = [p.strip() for p in event_reminder_times.split(',') if p.strip()]
+        else:
+            prefs = [p.strip() for p in user.reminder_preference.split(',') if p.strip()]
         sent  = [r.strip() for r in (event.sent_reminders or '').split(',') if r.strip()]
 
         pref_key, desc = _match_window(time_until, prefs)
@@ -255,23 +219,21 @@ def auto_judge_event_statuses():
             new_status = 'completed' if (lecture.total_students > 0 or lecture.is_attending) else 'missed'
             Lecture.objects.filter(pk=lecture.pk).update(status=new_status)
 
-    # 2. Student personal events
+    # 2. Student personal events — default to completed when time passes
     for event in StudentPersonalEvent.objects.filter(status='pending'):
         if _is_holiday(event.start_date.date()):
             StudentPersonalEvent.objects.filter(pk=event.pk).update(status='exempt')
             continue
         if event.end_date < now:
-            new_status = 'completed' if event.is_signed_in else 'missed'
-            StudentPersonalEvent.objects.filter(pk=event.pk).update(status=new_status)
+            StudentPersonalEvent.objects.filter(pk=event.pk).update(status='completed')
 
-    # 3. Faculty personal events
+    # 3. Faculty personal events — default to completed when time passes
     for event in FacultyPersonalEvent.objects.filter(status='pending'):
         if _is_holiday(event.start_date.date()):
             FacultyPersonalEvent.objects.filter(pk=event.pk).update(status='exempt')
             continue
         if event.end_date < now:
-            new_status = 'completed' if event.is_signed_in else 'missed'
-            FacultyPersonalEvent.objects.filter(pk=event.pk).update(status=new_status)
+            FacultyPersonalEvent.objects.filter(pk=event.pk).update(status='completed')
 
     # 4. Meeting requests
     for meeting in MeetingRequest.objects.filter(
@@ -292,13 +254,12 @@ def check_attendance_warnings():
     """
     For every registered unit, calculate the student's attendance rate.
     If it falls below ATTENDANCE_THRESHOLD and hasn't been warned in the
-    last 7 days, send an in-app (and optionally email) notification.
+    last 7 days, send an in-app notification.
     """
     week_ago = timezone.now() - timedelta(days=7)
 
     registrations = (
         RegisteredUnit.objects
-        .filter(is_registered=True)
         .select_related('student__student_name', 'unit__course')
     )
 
@@ -338,3 +299,4 @@ def check_attendance_warnings():
 
         if not already_warned:
             _send_notification(user, booked_unit, message)
+

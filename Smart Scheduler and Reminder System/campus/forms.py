@@ -363,6 +363,20 @@ class StudentPersonalEventForm(forms.ModelForm):
         'type': 'date', 'class': 'form-control'
     }), required=False)
 
+    REMINDER_CHOICES = [
+        ('60min', '60 minutes before'),
+        ('30min', '30 minutes before'),
+        ('15min', '15 minutes before'),
+        ('instant', 'At start time'),
+    ]
+    reminder_times = forms.MultipleChoiceField(
+        choices=REMINDER_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label='Remind me',
+        help_text='Leave unchecked to use your profile default.',
+    )
+
     class Meta:
         model = StudentPersonalEvent
         fields = ['title', 'description', 'priority', 'start_date', 'end_date',
@@ -371,6 +385,15 @@ class StudentPersonalEventForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.student_instance = kwargs.pop('student_instance', None)
         super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.reminder_times:
+            self.initial['reminder_times'] = self.instance.reminder_times.split(',')
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.reminder_times = ','.join(self.cleaned_data.get('reminder_times', []))
+        if commit:
+            instance.save()
+        return instance
 
     def clean(self):
         cleaned_data = super().clean()
@@ -474,6 +497,20 @@ class FacultyPersonalEventForm(forms.ModelForm):
         'type': 'date', 'class': 'form-control'
     }), required=False)
 
+    REMINDER_CHOICES = [
+        ('60min', '60 minutes before'),
+        ('30min', '30 minutes before'),
+        ('15min', '15 minutes before'),
+        ('instant', 'At start time'),
+    ]
+    reminder_times = forms.MultipleChoiceField(
+        choices=REMINDER_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        label='Remind me',
+        help_text='Leave unchecked to use your profile default.',
+    )
+
     class Meta:
         model = FacultyPersonalEvent
         fields = ['title', 'description', 'priority', 'start_date', 'end_date', 'recurrence_pattern', 'recurrence_end_type', 'recurrence_count', 'recurrence_end_date']
@@ -481,6 +518,15 @@ class FacultyPersonalEventForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.faculty_instance = kwargs.pop('faculty_instance', None)
         super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.reminder_times:
+            self.initial['reminder_times'] = self.instance.reminder_times.split(',')
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.reminder_times = ','.join(self.cleaned_data.get('reminder_times', []))
+        if commit:
+            instance.save()
+        return instance
 
     def clean(self):
         cleaned_data = super().clean()

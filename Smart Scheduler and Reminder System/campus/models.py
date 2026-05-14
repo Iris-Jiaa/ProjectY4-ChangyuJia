@@ -275,6 +275,7 @@ class StudentPersonalEvent(models.Model):
     parent_event_id = models.CharField(max_length=50, null=True, blank=True)
 
     sent_reminders = models.CharField(max_length=100, blank=True, help_text="Comma-separated list of sent reminder times, e.g., '60min,15min'")
+    reminder_times = models.CharField(max_length=100, blank=True, default='', help_text="Comma-separated reminder times for this event, e.g. '60min,15min'. Uses profile default if empty.")
     is_signed_in = models.BooleanField(default=False)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     date_created = models.DateTimeField(auto_now_add=True)
@@ -335,6 +336,7 @@ class FacultyPersonalEvent(models.Model):
     parent_event_id = models.CharField(max_length=50, null=True, blank=True)
 
     sent_reminders = models.CharField(max_length=100, blank=True, help_text="Comma-separated list of sent reminder times, e.g., '60min,15min'")
+    reminder_times = models.CharField(max_length=100, blank=True, default='', help_text="Comma-separated reminder times for this event, e.g. '60min,15min'. Uses profile default if empty.")
     is_signed_in = models.BooleanField(default=False)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     date_created = models.DateTimeField(auto_now_add=True)

@@ -41,14 +41,15 @@ INSTALLED_APPS = [
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',        # must be first
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'campus.middleware.NoCacheAuthenticatedMiddleware',     # VULN-12: prevent back-button cache bypass
 ]
 
 ROOT_URLCONF = 'src.urls'
@@ -149,6 +150,40 @@ MESSAGE_TAGS = {
 LOGIN_URL = 'login'
 LOGOUT_REDIRECT_URL = 'login'
 
+# ── Celery ────────────────────────────────────────────────────────────────────
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://127.0.0.1:6379/0')
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+CELERY_BEAT_SCHEDULE = {
+    'personal-event-reminders': {
+        'task': 'campus.tasks.send_personal_event_reminders',
+        'schedule': 60.0,                        # every 60 s
+    },
+    'lecture-reminders': {
+        'task': 'campus.tasks.send_upcoming_lecture_notifications',
+        'schedule': 60.0,
+    },
+    'meeting-reminders': {
+        'task': 'campus.tasks.send_upcoming_meeting_notifications',
+        'schedule': 60.0,
+    },
+    'auto-judge-statuses': {
+        'task': 'campus.tasks.auto_judge_event_statuses',
+        'schedule': 300.0,                       # every 5 min
+    },
+    'attendance-warnings': {
+        'task': 'campus.tasks.check_attendance_warnings',
+        'schedule': crontab(hour=8, minute=0),   # once daily at 08:00 UTC
+    },
+}
+
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
 
@@ -156,38 +191,3 @@ if not DEBUG:
 
     CSRF_COOKIE_SECURE = True
 
-# Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
-'''CELERY_BEAT_SCHEDULE = {
-    'notify-students-of-upcoming-lectures': {
-        'task': 'campus.tasks.notify_students_of_upcoming_lectures',
-        'schedule': 60.0,
-    },
-}'''
-CELERY_BEAT_SCHEDULE = {
-    'send-upcoming-lecture-notifications': {
-        'task': 'campus.tasks.send_upcoming_lecture_notifications',
-        'schedule': 60.0,
-    },
-    'send-upcoming-meeting-notifications': {
-        'task': 'campus.tasks.send_upcoming_meeting_notifications',
-        'schedule': 60.0,
-    },
-    'send_personal_event_reminders': {
-        'task': 'campus.tasks.send_personal_event_reminders',
-        'schedule': 60.0,
-    },
-    'auto-judge-event-statuses': {
-        'task': 'campus.tasks.auto_judge_event_statuses',
-        'schedule': 300.0,
-    },
-    'check-attendance-warnings': {
-        'task': 'campus.tasks.check_attendance_warnings',
-        'schedule': 86400.0,  # Run once every 24 hours
-    },
-}

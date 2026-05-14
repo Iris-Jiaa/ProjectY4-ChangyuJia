@@ -1,6 +1,7 @@
 from .forms import EditScheduledLectureForm, FeedbackForm, LecturerUnitsBookingForm, StudentsAttendanceConfirmationForm, StudentPersonalEventForm, FacultyPersonalEventForm, MeetingRequestForm, ScheduleLectureForm, EditMeetingRequestForm
 from accounts.models import Student, Faculty
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.views.decorators.http import require_POST
 from django.utils.decorators import method_decorator
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
@@ -12,6 +13,11 @@ from django.contrib.contenttypes.models import ContentType
 from datetime import time, datetime as dt, timedelta
 import json
 import random
+
+
+def _safe_json(data):
+    """JSON-encode data with characters that could break out of <script> blocks escaped."""
+    return json.dumps(data).replace('<', '\\u003c').replace('>', '\\u003e').replace('/', '\\u002f')
 from django.utils import timezone # Added for IntegrityError fix
 from django.core.exceptions import ValidationError
 from .utils import check_student_conflicts, create_recurring_instances # Import the conflict detection and recurrence utility
@@ -119,7 +125,7 @@ def delete_holiday(request, holiday_id):
 
 # students views
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class StudentHomepageView(View):
     form_class = StudentsAttendanceConfirmationForm
     template_name = 'dashboard/students/homepage.html'
@@ -197,8 +203,8 @@ class StudentHomepageView(View):
             lecture_events.append({
                 'id': meeting.id,
                 'title': meeting.title,
-                'start': meeting.start_time.isoformat(),
-                'end': meeting.end_time.isoformat(),
+                'start': meeting.start_time.strftime('%Y-%m-%dT%H:%M:%S'),
+                'end': meeting.end_time.strftime('%Y-%m-%dT%H:%M:%S'),
                 'description': meeting.description,
                 'is_signed_in': meeting.is_signed_in,
                 'status': meeting.status,
@@ -226,7 +232,7 @@ class StudentHomepageView(View):
             'TotalUnits': total_units,
             'TotalLectures': total_lectures,
             'scheduled_lectures': scheduled_lectures_QS,
-            'events': json.dumps(lecture_events),
+            'events': _safe_json(lecture_events),
             'personal_event_form': StudentPersonalEventForm(),
             'modified_requests': modified_requests,
             'conflicts': conflicts,
@@ -236,7 +242,7 @@ class StudentHomepageView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class LecturerCalendarView(View):
     template_name = 'dashboard/students/lecturer_calendar.html'
 
@@ -259,15 +265,15 @@ class LecturerCalendarView(View):
             for event in personal_events:
                 event_data.append({
                     'title': event.title,
-                    'start': event.start_date.isoformat(),
-                    'end': event.end_date.isoformat(),
+                    'start': event.start_date.strftime('%Y-%m-%dT%H:%M:%S'),
+                    'end': event.end_date.strftime('%Y-%m-%dT%H:%M:%S'),
                     'backgroundColor': '#00a65a', # green
                     'borderColor': '#00a65a'
                 })
 
             context = {
                 'lecturer': lecturer,
-                'events': json.dumps(event_data),
+                'events': _safe_json(event_data),
                 'meeting_form': MeetingRequestForm(student=request.user.student)
             }
             return render(request, self.template_name, context)
@@ -284,19 +290,37 @@ def get_personal_events(request):
         'high':   '#dc3545',  # red
     }
     event_data = []
-    now = timezone.now()
+
+    # Use the date range sent by FullCalendar so all events in the visible
+    # window are returned, including past ones.
+    range_start = request.GET.get('start')
+    range_end   = request.GET.get('end')
+
+    def build_filter(base_filter):
+        f = dict(base_filter)
+        if range_start:
+            try:
+                f['end_date__gte'] = dt.fromisoformat(range_start.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+        if range_end:
+            try:
+                f['start_date__lte'] = dt.fromisoformat(range_end.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+        return f
+
     if request.user.is_student:
         events = StudentPersonalEvent.objects.filter(
-            student=request.user.student,
-            end_date__gte=now,
+            **build_filter({'student': request.user.student})
         )
         for event in events:
             color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
                 'id': event.id,
                 'title': event.title,
-                'start': event.start_date.isoformat(),
-                'end': event.end_date.isoformat(),
+                'start': event.start_date.strftime('%Y-%m-%dT%H:%M:%S'),
+                'end': event.end_date.strftime('%Y-%m-%dT%H:%M:%S'),
                 'description': event.description,
                 'is_signed_in': event.is_signed_in,
                 'status': event.status,
@@ -306,16 +330,15 @@ def get_personal_events(request):
             })
     elif hasattr(request.user, 'faculty'):
         events = FacultyPersonalEvent.objects.filter(
-            faculty=request.user.faculty,
-            end_date__gte=now,
+            **build_filter({'faculty': request.user.faculty})
         )
         for event in events:
             color = PRIORITY_COLORS.get(event.priority, '#fd7e14')
             event_data.append({
                 'id': event.id,
                 'title': event.title,
-                'start': event.start_date.isoformat(),
-                'end': event.end_date.isoformat(),
+                'start': event.start_date.strftime('%Y-%m-%dT%H:%M:%S'),
+                'end': event.end_date.strftime('%Y-%m-%dT%H:%M:%S'),
                 'description': event.description,
                 'is_signed_in': event.is_signed_in,
                 'status': event.status,
@@ -444,14 +467,7 @@ def request_meeting(request, lecturer_id):
                 meeting_request = form.save(commit=False)
                 meeting_request.student = request.user.student
                 meeting_request.lecturer = lecturer
-                meeting_request.save()
-                student_name = request.user.get_full_name() or request.user.username
-                Notification.objects.create(
-                    recipient=lecturer.staff,
-                    message=f"New meeting request from {student_name}: '{meeting_request.title}'.",
-                    content_type=ContentType.objects.get_for_model(meeting_request),
-                    object_id=meeting_request.id,
-                )
+                meeting_request.save()  # post_save signal handles lecturer notification
                 return JsonResponse({'status': 'success', 'message': 'Meeting request submitted successfully.'})
             except Faculty.DoesNotExist:
                 return JsonResponse({'status': 'error', 'message': 'Lecturer not found.'})
@@ -461,11 +477,14 @@ def request_meeting(request, lecturer_id):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class StudentsUnitsRegistrationView(View):
     template_name = 'dashboard/students/register-units.html'
 
     def get(self, request, student_id, *args, **kwargs):
+        if str(request.user.student.id) != str(student_id):
+            messages.error(request, 'You are not authorised to view this page.')
+            return redirect('student_homepage')
         # Data cleanup: Remove any registration records with empty IDs that cause template errors
         RegisteredUnit.objects.filter(id='', student=request.user.student).delete()
         
@@ -483,13 +502,16 @@ class StudentsUnitsRegistrationView(View):
         return render(request, self.template_name, context)
 
     def post(self, request, student_id, *args, **kwargs):
+        if str(request.user.student.id) != str(student_id):
+            messages.error(request, 'You are not authorised to perform this action.')
+            return redirect('student_homepage')
         get_unit_field = request.POST.get('register-unit')
         if not get_unit_field:
             messages.warning(request, 'Please select a unit to register.')
             return redirect('unit_registration', student_id)
         try:
             unit_obj = BookedUnit.objects.get(id=get_unit_field)
-            get_reg_unit = RegisteredUnit.objects.filter(unit=unit_obj).exists()
+            get_reg_unit = RegisteredUnit.objects.filter(unit=unit_obj, student=request.user.student).exists()
             if get_reg_unit is True:
                 messages.warning(request, 'Selected unit already registered!')
                 return redirect('unit_registration', student_id)
@@ -514,6 +536,7 @@ class StudentsUnitsRegistrationView(View):
             return redirect('unit_registration', student_id)
 
 @login_required(login_url='login')
+@require_POST
 def unregister_unit(request, student_id, unit_id):
     try:
         reg_unit = RegisteredUnit.objects.get(id=unit_id, student=request.user.student)
@@ -524,13 +547,15 @@ def unregister_unit(request, student_id, unit_id):
     return redirect('unit_registration', student_id)
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class LectureAttendanceConfirmationView(View):
     form_class = StudentsAttendanceConfirmationForm
     template_name = 'dashboard/students/confirm-attendance.html'
-    current_date = dt.now().strftime('%Y-%m-%d')
 
     def get(self, request, lecture_id, _student, *args, **kwargs):
+        if str(request.user.student.id) != str(_student):
+            messages.error(request, 'You are not authorised to view this page.')
+            return redirect('student_homepage')
         current_date = dt.now().strftime('%Y-%m-%d')
         lec_obj = Lecture.objects.get(id=lecture_id)
         form = self.form_class(instance=lec_obj)
@@ -553,6 +578,9 @@ class LectureAttendanceConfirmationView(View):
         return render(request, self.template_name, context)
 
     def post(self, request, lecture_id, _student, *args, **kwargs):
+        if str(request.user.student.id) != str(_student):
+            messages.error(request, 'You are not authorised to perform this action.')
+            return redirect('student_homepage')
         scheduled_lectures_QS = Lecture.objects.filter(
             lecturer__department=request.user.student.department,
             unit_name__students_course=request.user.student.course,
@@ -570,7 +598,7 @@ class LectureAttendanceConfirmationView(View):
             confirmation.save()
 
             # check for lectures before current date
-            past_lectures_qs = Lecture.objects.filter(is_taught=False, lecture_date__lte=self.current_date)
+            past_lectures_qs = Lecture.objects.filter(is_taught=False, lecture_date__lte=dt.now().strftime('%Y-%m-%d'))
 
             for _lecture in past_lectures_qs:   # iterate through all lectures in the queryset
                 get_lecture = Lecture.objects.get(id=_lecture.id)   # get each lecture in the qs using their id
@@ -591,7 +619,7 @@ class LectureAttendanceConfirmationView(View):
         return render(request, self.template_name, context)
     
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class StudentsLecturesDetailView(View):
     template_name = 'dashboard/students/lectures.html'
     def get(self, request, _student, *args, **kwargs):
@@ -631,7 +659,7 @@ class StudentsLecturesDetailView(View):
         return render(request, self.template_name, context)
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class SubmitFeedbackView(View):
     form_class = FeedbackForm
     template_name = 'dashboard/students/feedback.html'
@@ -654,7 +682,7 @@ class SubmitFeedbackView(View):
             new_feedback.save()
 
             # calculate the average rating of the lecture hall/room based on all rate scores in submitted user feedback
-            avg_rating = Feedback.objects.aggregate(avg_rating=Avg('rate_score'))['avg_rating']
+            avg_rating = Feedback.objects.filter(lecture_hall=lecture_hall).aggregate(avg_rating=Avg('rate_score'))['avg_rating']
             lecture_hall.rating = avg_rating
             lecture_hall.save()
 
@@ -697,7 +725,7 @@ class FacultyDashboardView(View):
                 'event_type': 'lecture',
                 'description': '',
                 'status': event.status,
-                'location': event.lecture_hall.name if event.lecture_hall else 'TBA',
+                'location': event.lecture_hall.hall_no if event.lecture_hall else 'TBA',
                 'backgroundColor': '#f56954',
                 'borderColor': '#f56954',
             })
@@ -717,7 +745,7 @@ class FacultyDashboardView(View):
         context = {
             'TotalBookedUnits': total_booked_units,
             'scheduled_lectures': scheduled_lectures_QS,
-            'events': json.dumps(lecture_events),
+            'events': _safe_json(lecture_events),
             'pending_requests_count': pending_requests_count,
             'personal_event_form': FacultyPersonalEventForm(),
             'units_to_schedule': units_to_schedule,
@@ -728,6 +756,9 @@ class FacultyDashboardView(View):
 def approve_meeting_request(request, request_id):
     if request.method != 'POST':
         return redirect('manage_meeting_requests')
+    if not hasattr(request.user, 'faculty'):
+        messages.error(request, 'You are not authorised to perform this action.')
+        return redirect('student_homepage')
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id)
         if request.user.faculty != meeting_request.lecturer:
@@ -803,6 +834,9 @@ def approve_meeting_request(request, request_id):
 def reject_meeting_request(request, request_id):
     if request.method != 'POST':
         return redirect('manage_meeting_requests')
+    if not hasattr(request.user, 'faculty'):
+        messages.error(request, 'You are not authorised to perform this action.')
+        return redirect('student_homepage')
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id)
         if request.user.faculty != meeting_request.lecturer:
@@ -832,7 +866,7 @@ def reject_meeting_request(request, request_id):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is False), name='get')
 class ManageMeetingRequestsView(View):
     template_name = 'dashboard/faculty/manage_requests.html'
 
@@ -849,7 +883,7 @@ class ManageMeetingRequestsView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is True), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is True), name='get')
 class StudentMeetingRequestsView(View):
     """Student view to track all their meeting requests and statuses."""
     template_name = 'dashboard/students/meeting_requests.html'
@@ -891,6 +925,7 @@ def cancel_meeting_request(request, request_id):
     return redirect('student_meeting_requests')
 
 
+@method_decorator(login_required(login_url='login'), name='dispatch')
 @method_decorator(user_passes_test(lambda user: hasattr(user, 'faculty')), name='dispatch')
 class ScheduleLectureView(View):
     template_name = 'dashboard/faculty/schedule-lecture.html'
@@ -1026,8 +1061,8 @@ class AssignUnitsforLecturersView(View):
         }
         return render(request, self.template_name, context)
 
-@method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(login_required(login_url='login'), name='dispatch')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is False), name='dispatch')
 class LecturesDetailView(View):
     template_name = 'dashboard/faculty/lectures.html'
 
@@ -1039,14 +1074,22 @@ class LecturesDetailView(View):
 
         }
         return render(request, self.template_name, context)
-    
+
     def post(self, request, staff_name, staff_id, *args, **kwargs):
         lecture_record_ID = request.POST.get('scheduled-lecture')
-        scheduled_lectures_QS = Lecture.objects.get(id=lecture_record_ID)
-        scheduled_lectures_QS.delete()
+        try:
+            lecture = Lecture.objects.get(id=lecture_record_ID)
+        except Lecture.DoesNotExist:
+            messages.error(request, 'Lecture not found.')
+            return redirect('view_faculty_lectures', staff_id=staff_id, staff_name=staff_name)
 
+        if lecture.lecturer != request.user.faculty:
+            messages.error(request, 'You are not authorised to delete this lecture.')
+            return redirect('view_faculty_lectures', staff_id=staff_id, staff_name=staff_name)
+
+        lecture.delete()
         messages.error(request, 'You deleted a scheduled lecture!')
-        return redirect('lectures_records', staff_name, staff_id)
+        return redirect('view_faculty_lectures', staff_id=staff_id, staff_name=staff_name)
 
 
 @method_decorator(login_required(login_url='login'), name='get')
@@ -1107,7 +1150,7 @@ class ViewUnitStudentsView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is False), name='get')
 class StudentCalendarView(View):
     template_name = 'dashboard/faculty/student_calendar.html'
 
@@ -1141,15 +1184,15 @@ class StudentCalendarView(View):
             for event in personal_events:
                 event_data.append({
                     'title': event.title,
-                    'start': event.start_date.isoformat(),
-                    'end': event.end_date.isoformat(),
+                    'start': event.start_date.strftime('%Y-%m-%dT%H:%M:%S'),
+                    'end': event.end_date.strftime('%Y-%m-%dT%H:%M:%S'),
                     'backgroundColor': '#00a65a', # green
                     'borderColor': '#00a65a'
                 })
 
             context = {
                 'student': student,
-                'events': json.dumps(event_data)
+                'events': _safe_json(event_data)
             }
             return render(request, self.template_name, context)
         except Student.DoesNotExist:
@@ -1158,29 +1201,42 @@ class StudentCalendarView(View):
 
 
 @method_decorator(login_required(login_url='login'), name='get')
-@method_decorator(user_passes_test(lambda user: (user.is_staff is False or user.is_superuser is False) and user.is_student is False), name='get')
+@method_decorator(user_passes_test(lambda user: user.is_staff is False and user.is_superuser is False and user.is_student is False), name='get')
 class EditScheduledLecturesView(View):
     form_class = EditScheduledLectureForm
     template_name = 'dashboard/faculty/edit.html'
 
     def get(self, request, staff_id, lecture_id, *args, **kwargs):
-        lectures_QS = Lecture.objects.get(id=lecture_id)
+        try:
+            lectures_QS = Lecture.objects.get(id=lecture_id)
+        except Lecture.DoesNotExist:
+            messages.error(request, 'Lecture not found.')
+            return redirect('faculty_homepage')
+        if lectures_QS.lecturer != request.user.faculty:
+            messages.error(request, 'You are not authorised to edit this lecture.')
+            return redirect('faculty_homepage')
         form = self.form_class(instance=lectures_QS)
 
         context = {
             'EditScheduledLectureForm': form,
         }
         return render(request, self.template_name, context)
-    
+
     def post(self, request, staff_id, lecture_id, *args, **kwargs):
-        lectures_QS = Lecture.objects.get(id=lecture_id)
+        try:
+            lectures_QS = Lecture.objects.get(id=lecture_id)
+        except Lecture.DoesNotExist:
+            messages.error(request, 'Lecture not found.')
+            return redirect('faculty_homepage')
+        if lectures_QS.lecturer != request.user.faculty:
+            messages.error(request, 'You are not authorised to edit this lecture.')
+            return redirect('faculty_homepage')
         form = self.form_class(request.POST, instance=lectures_QS)
 
         if form.is_valid():
             form.save()
-
             messages.warning(request, 'You updated a scheduled lecture!')
-            return redirect('lectures_records', staff_id, request.user.faculty)
+            return redirect('view_faculty_lectures', staff_id=staff_id, staff_name=request.user.faculty)
 
         context = {
             'EditScheduledLectureForm': form,
@@ -1213,7 +1269,7 @@ def find_available_slots(request, lecturer_id):
 
             personal_events = FacultyPersonalEvent.objects.filter(faculty=lecturer, start_date__range=[start_date, end_date])
             for event in personal_events:
-                lecturer_events.append((event.start_date, event.end_date))
+                lecturer_events.append((event.start_date.replace(tzinfo=None), event.end_date.replace(tzinfo=None)))
 
             # Get all events for the student
             student_events = []
@@ -1230,7 +1286,7 @@ def find_available_slots(request, lecturer_id):
             
             student_personal_events = StudentPersonalEvent.objects.filter(student=student, start_date__range=[start_date, end_date])
             for event in student_personal_events:
-                student_events.append((event.start_date, event.end_date))
+                student_events.append((event.start_date.replace(tzinfo=None), event.end_date.replace(tzinfo=None)))
 
             # Combine and sort all events
             all_events = sorted(lecturer_events + student_events)
@@ -1316,6 +1372,7 @@ class EditMeetingRequestView(View):
             return redirect('manage_meeting_requests')
 
 @login_required(login_url='login')
+@require_POST
 def accept_meeting_request(request, request_id):
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id, student=request.user.student)
@@ -1338,6 +1395,7 @@ def accept_meeting_request(request, request_id):
     return redirect('student_homepage')
 
 @login_required(login_url='login')
+@require_POST
 def reject_modified_meeting_request(request, request_id):
     try:
         meeting_request = MeetingRequest.objects.get(id=request_id, student=request.user.student)
@@ -1717,3 +1775,4 @@ def delete_event_comment(request, comment_id):
 
     comment.delete()
     return JsonResponse({'status': 'success'})
+
